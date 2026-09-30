@@ -1,0 +1,1 @@
+// Generic GPS payload types.

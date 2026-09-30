@@ -1,0 +1,1 @@
+// Application error code definitions.
