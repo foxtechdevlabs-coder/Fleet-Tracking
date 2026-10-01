@@ -1,0 +1,181 @@
+================================================================================
+VEHICLE TRACKING SYSTEM (PHASE 1 BACKEND) - DATABASE LAYER CHANGES
+================================================================================
+Generated: 2026-10-01
+Scope: MikroORM 7 EntitySchemas, PostgreSQL Migration, Database Scripts, Config
+
+--------------------------------------------------------------------------------
+1. OVERVIEW
+--------------------------------------------------------------------------------
+Implemented the complete persistence layer for the Vehicle Tracking System backend:
+- 8 typed domain entity classes and MikroORM declarative EntitySchemas.
+- 1 raw SQL migration with idempotent DDL, constraints, cascading FKs, and indexes.
+- MikroORM configuration updated to discover and register all 8 entities.
+- 2 schema management runner scripts (`create-schema` and `dump-schema`).
+- NPM scripts configured in `package.json`.
+- Zero TypeScript compilation errors verified via `pnpm run typecheck`.
+
+--------------------------------------------------------------------------------
+2. FILES CREATED
+--------------------------------------------------------------------------------
+
+1. src/database/migrations/001_initial_schema.sql
+   - Complete PostgreSQL DDL (Postgres >= 14 compatible).
+   - Wrapped in atomic transaction block: `BEGIN; ... COMMIT;`.
+   - Uses `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` for idempotency.
+   - Default primary keys generated via `gen_random_uuid()`.
+   - Tables created:
+     * admins (admin/super_admin users)
+     * vehicles (fleet vehicle registry)
+     * devices (GPS tracking hardware)
+     * location_history (append-only GPS time-series points)
+     * latest_locations (single row per vehicle for fast real-time lookup)
+     * trips (vehicle journeys from start to finish)
+     * telemetry_events (sensor readings and diagnostic event logs)
+     * settings (key-value settings, global or per-vehicle)
+   - Foreign key constraints with explicit ON DELETE behaviors:
+     * devices.vehicle_id -> vehicles(id) ON DELETE SET NULL
+     * location_history.vehicle_id -> vehicles(id) ON DELETE CASCADE
+     * location_history.device_id -> devices(id) ON DELETE CASCADE
+     * latest_locations.vehicle_id -> vehicles(id) ON DELETE CASCADE (UNIQUE)
+     * trips.vehicle_id -> vehicles(id) ON DELETE CASCADE
+     * telemetry_events.vehicle_id -> vehicles(id) ON DELETE CASCADE
+     * telemetry_events.device_id -> devices(id) ON DELETE CASCADE
+     * settings.vehicle_id -> vehicles(id) ON DELETE CASCADE
+   - Check constraints:
+     * admins_role_check: role IN ('super_admin', 'admin')
+     * vehicles_status_check: status IN ('active', 'inactive', 'maintenance')
+     * vehicles_year_check: year >= 1900 AND year <= 2100
+     * devices_status_check: status IN ('active', 'inactive', 'unassigned')
+     * trips_status_check: status IN ('in_progress', 'completed')
+     * settings_scope_check: scope IN ('global', 'per_vehicle')
+   - Unique constraints:
+     * admins: email
+     * vehicles: plate_number
+     * devices: identifier
+     * latest_locations: vehicle_id
+     * settings: composite UNIQUE (key, vehicle_id)
+   - Optimized B-tree indexes:
+     * idx_devices_vehicle_id ON devices(vehicle_id)
+     * idx_location_history_vehicle_id ON location_history(vehicle_id)
+     * idx_location_history_device_id ON location_history(device_id)
+     * idx_location_history_recorded_at ON location_history(recorded_at DESC)
+     * idx_location_history_vehicle_recorded ON location_history(vehicle_id, recorded_at DESC)
+     * idx_trips_vehicle_id ON trips(vehicle_id)
+     * idx_trips_started_at ON trips(started_at DESC)
+     * idx_trips_status ON trips(status)
+     * idx_telemetry_vehicle_id ON telemetry_events(vehicle_id)
+     * idx_telemetry_device_id ON telemetry_events(device_id)
+     * idx_telemetry_event_type ON telemetry_events(event_type)
+     * idx_telemetry_recorded_at ON telemetry_events(recorded_at DESC)
+     * idx_settings_scope ON settings(scope)
+
+2. src/modules/tracking/latest-location.entity.ts
+   - Defines `LatestLocation` class and `LatestLocationSchema` (EntitySchema).
+   - Maps to `latest_locations` table.
+   - Fields: id, vehicleId (unique FK), latitude, longitude, speed, heading, updatedAt.
+
+3. src/database/create-schema.ts
+   - Standalone runner script for executing the migration against PostgreSQL.
+   - Reads `001_initial_schema.sql` via `node:fs/promises`.
+   - Initializes MikroORM via `MikroORM.init(mikroOrmConfig)`.
+   - Obtains raw connection via `orm.em.getConnection()`.
+   - Executes migration statements and guarantees clean shutdown via `orm.close(true)`.
+
+4. src/database/dump-schema.ts
+   - Standalone CLI utility to inspect migration DDL without requiring a live DB connection.
+   - Reads `001_initial_schema.sql` and prints it to stdout.
+
+--------------------------------------------------------------------------------
+3. FILES MODIFIED
+--------------------------------------------------------------------------------
+
+1. src/modules/admins/admin.entity.ts
+   - Replaced placeholder comment with `Admin` class and `AdminSchema`.
+   - Table: `admins`.
+   - Fields: id (UUID PK), email (VARCHAR 255 UNIQUE), passwordHash (`password_hash` TEXT),
+     name (VARCHAR 255), role (VARCHAR 50, default 'admin'), isActive (`is_active` BOOLEAN, default true),
+     createdAt (`created_at` TIMESTAMPTZ), updatedAt (`updated_at` TIMESTAMPTZ).
+
+2. src/modules/vehicles/vehicle.entity.ts
+   - Replaced placeholder comment with `Vehicle` class and `VehicleSchema`.
+   - Table: `vehicles`.
+   - Fields: id (UUID PK), plateNumber (`plate_number` VARCHAR 20 UNIQUE), make (VARCHAR 100),
+     model (VARCHAR 100), year (SMALLINT), status (VARCHAR 20, default 'active'),
+     createdAt (`created_at` TIMESTAMPTZ), updatedAt (`updated_at` TIMESTAMPTZ).
+
+3. src/modules/devices/device.entity.ts
+   - Replaced placeholder comment with `Device` class and `DeviceSchema`.
+   - Table: `devices`.
+   - Fields: id (UUID PK), identifier (VARCHAR 100 UNIQUE), vehicleId (`vehicle_id` UUID nullable FK),
+     status (VARCHAR 20, default 'unassigned'), lastSeenAt (`last_seen_at` TIMESTAMPTZ nullable),
+     createdAt (`created_at` TIMESTAMPTZ), updatedAt (`updated_at` TIMESTAMPTZ).
+   - Index on `vehicle_id`.
+
+4. src/modules/tracking/location.entity.ts
+   - Replaced placeholder comment with `LocationHistory` class and `LocationHistorySchema`.
+   - Also exported `Location` and `LocationSchema` convenience aliases.
+   - Table: `location_history`.
+   - Fields: id (UUID PK), vehicleId (`vehicle_id` UUID FK), deviceId (`device_id` UUID FK),
+     latitude (DOUBLE PRECISION), longitude (DOUBLE PRECISION), speed (REAL nullable),
+     heading (REAL nullable), altitude (REAL nullable), recordedAt (`recorded_at` TIMESTAMPTZ),
+     ingestedAt (`ingested_at` TIMESTAMPTZ).
+   - Indexes on: `vehicle_id`, `device_id`, `recorded_at DESC`, `(vehicle_id, recorded_at DESC)`.
+
+5. src/modules/trips/trip.entity.ts
+   - Replaced placeholder comment with `Trip` class and `TripSchema`.
+   - Table: `trips`.
+   - Fields: id (UUID PK), vehicleId (`vehicle_id` UUID FK), startedAt (`started_at` TIMESTAMPTZ),
+     endedAt (`ended_at` TIMESTAMPTZ nullable), startLat (`start_lat` DOUBLE PRECISION),
+     startLng (`start_lng` DOUBLE PRECISION), endLat (`end_lat` DOUBLE PRECISION nullable),
+     endLng (`end_lng` DOUBLE PRECISION nullable), distanceKm (`distance_km` DOUBLE PRECISION default 0),
+     status (VARCHAR 20 default 'in_progress'), createdAt (`created_at` TIMESTAMPTZ).
+   - Indexes on: `vehicle_id`, `started_at DESC`, `status`.
+
+6. src/modules/telemetry/telemetry.entity.ts
+   - Replaced placeholder comment with `TelemetryEvent` class and `TelemetryEventSchema`.
+   - Also exported `Telemetry` and `TelemetrySchema` convenience aliases.
+   - Table: `telemetry_events`.
+   - Fields: id (UUID PK), vehicleId (`vehicle_id` UUID FK), deviceId (`device_id` UUID FK),
+     eventType (`event_type` VARCHAR 100), payload (JSONB default '{}'::jsonb),
+     recordedAt (`recorded_at` TIMESTAMPTZ), ingestedAt (`ingested_at` TIMESTAMPTZ).
+   - Indexes on: `vehicle_id`, `device_id`, `event_type`, `recorded_at DESC`.
+
+7. src/modules/settings/settings.entity.ts
+   - Replaced placeholder comment with `SystemSetting` class and `SystemSettingSchema`.
+   - Also exported `Setting` and `SettingSchema` convenience aliases.
+   - Table: `settings`.
+   - Fields: id (UUID PK), key (VARCHAR 255), value (JSONB), scope (VARCHAR 20 default 'global'),
+     vehicleId (`vehicle_id` UUID nullable FK), updatedAt (`updated_at` TIMESTAMPTZ).
+   - Index on `scope`.
+   - Unique constraint definition on `(key, vehicle_id)`.
+
+8. src/database/mikro-orm.config.ts
+   - Imported all 8 schemas:
+     * AdminSchema
+     * VehicleSchema
+     * DeviceSchema
+     * LocationHistorySchema
+     * LatestLocationSchema
+     * TripSchema
+     * TelemetryEventSchema
+     * SystemSettingSchema
+   - Registered them in the `entities: [...]` array configuration.
+
+9. package.json
+   - Added two database management scripts:
+     * "db:schema:create": "tsx src/database/create-schema.ts"
+     * "db:schema:sql": "tsx src/database/dump-schema.ts"
+
+--------------------------------------------------------------------------------
+4. COMMANDS TO RUN
+--------------------------------------------------------------------------------
+- Type checking:
+    pnpm run typecheck
+
+- Preview SQL migration without running against DB:
+    pnpm run db:schema:sql
+
+- Execute SQL migration against configured database (DATABASE_URL in .env):
+    pnpm run db:schema:create
+================================================================================
