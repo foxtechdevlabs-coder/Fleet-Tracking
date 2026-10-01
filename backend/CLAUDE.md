@@ -68,4 +68,4 @@ Each domain lives in `src/modules/<name>/` with `*.routes.ts`, `*.controller.ts`
 Planned data flow (from `backend/README.md`): GPS Device / Simulator → GPS Adapter → Ingestion → Validation / Normalization → Vehicle + Device Resolution → Location Processing → PostgreSQL (MikroORM) → Latest Location → Socket.IO → Frontend. The planned stack also includes Socket.IO and Zod, which are not installed yet.
 
 ### Tests
-The folders are `tests/unit`, `tests/integration` and `tests/e2e`. Tests must not require PostgreSQL unless they are explicitly database integration tests. Supertest is not installed yet.
+The folders are `tests/unit`, `tests/integration` and `tests/e2e`. Tests must not require PostgreSQL unless they are explicitly database integration tests. HTTP tests use Supertest against `createApp()` (`import request from "supertest"`), which needs no database and no `listen`.
