@@ -32,10 +32,22 @@ export const env = {
   databaseUrl:
     process.env.DATABASE_URL?.trim() ||
     `postgresql://${encodeURIComponent(
-      required("DB_USERNAME")
+      required("DB_USERNAME"),
     )}:${encodeURIComponent(
-      required("DB_PASSWORD")
+      required("DB_PASSWORD"),
     )}@${required("DB_HOST")}:${port("DB_PORT")}/${required("DB_NAME")}`,
+
+  jwtSecret:
+    process.env.JWT_SECRET?.trim() || "dev-secret-change-in-production",
+
+  adminInitialEmail:
+    process.env.ADMIN_INITIAL_EMAIL?.trim() || "admin@example.com",
+
+  adminInitialPassword:
+    process.env.ADMIN_INITIAL_PASSWORD?.trim() || "Admin123!",
+
+  adminInitialName:
+    process.env.ADMIN_INITIAL_NAME?.trim() || "System Administrator",
 } as const;
 
 export const isDevelopment = env.nodeEnv === "development";
