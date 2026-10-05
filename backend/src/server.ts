@@ -19,7 +19,7 @@ async function bootstrap(): Promise<void> {
   }
   console.log("Database connected");
 
-  const app = createApp();
+  const app = createApp(orm);
   const server = await new Promise<Server>((resolve, reject) => {
     const httpServer = app.listen(env.port, (error) => {
       if (error) {
