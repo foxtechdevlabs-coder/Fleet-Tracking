@@ -141,4 +141,14 @@ CREATE TABLE IF NOT EXISTS settings (
 
 CREATE INDEX IF NOT EXISTS idx_settings_scope ON settings(scope);
 
+-- Revoked bearer tokens are persisted so logout takes effect across workers.
+CREATE TABLE IF NOT EXISTS revoked_tokens (
+  token_id   UUID        PRIMARY KEY,
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires_at
+  ON revoked_tokens(expires_at);
+
 COMMIT;

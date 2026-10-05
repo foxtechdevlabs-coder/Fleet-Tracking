@@ -1,9 +1,17 @@
-// Shared authentication types.
-export type {
-  AdminJwtPayload,
-  AdminTokenPayload,
-  AuthResponse,
-  LoginCredentials,
-  LoginResult,
-  TokenPayload,
-} from "../../modules/auth/auth.types.js";
+// Authenticated administrator identity attached by bearer-token middleware.
+export interface AuthenticatedAdmin {
+  id: string;
+  email: string;
+  name: string;
+  role: "super_admin" | "admin";
+  tokenId: string;
+  expiresAt: Date;
+}
+
+declare global {
+  namespace Express {
+    interface Request {
+      admin?: AuthenticatedAdmin;
+    }
+  }
+}

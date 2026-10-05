@@ -17,7 +17,7 @@
     "format": "biome format --write .",
     "db:schema:create": "tsx src/database/create-schema.ts",
     "db:schema:sql": "tsx src/database/dump-schema.ts",
-    "db:seed:admin": "tsx src/database/seeds/admin.seed.ts"
+    "admin:create": "tsx src/database/create-admin.ts"
   },
   "engines": {
     "node": ">=22.17.0"

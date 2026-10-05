@@ -1,183 +1,163 @@
-// Authentication service — login verification, credential validation, and JWT token issuance.
-import { createHmac, timingSafeEqual } from "node:crypto";
-import { verifyPassword } from "../../common/utils/password.util.js";
+// Admin password hashing and signed bearer-token operations.
+import {
+  createHmac,
+  randomBytes,
+  randomUUID,
+  scrypt as scryptCallback,
+  scryptSync,
+  timingSafeEqual,
+} from "node:crypto";
+import { promisify } from "node:util";
+import type { EntityManager } from "@mikro-orm/postgresql";
 import { env } from "../../config/env.js";
-import type { AdminRepository } from "../admins/admin.repository.js";
-import type { AdminProfile } from "../admins/admin.types.js";
-import { toAdminProfile } from "../admins/admin.types.js";
-import type {
-  AdminTokenPayload,
-  AuthResponse,
-  LoginCredentials,
-} from "./auth.types.js";
+import { Admin } from "../admins/admin.entity.js";
 
-export interface IAuthService {
-  validateCredentials(
-    credentials: LoginCredentials,
-  ): Promise<AdminProfile | null>;
-  login(credentials: LoginCredentials): Promise<AuthResponse>;
-  generateToken(
-    payload: Omit<AdminTokenPayload, "iat" | "exp">,
-    expiresInSeconds?: number,
-  ): string;
-  verifyToken(token: string): AdminTokenPayload;
+const scrypt = promisify(scryptCallback);
+const tokenLifetimeSeconds = 60 * 60;
+const dummyHash = scryptSync(
+  "invalid-user-password",
+  "vehicle-tracking-dummy-salt",
+  64,
+).toString("base64url");
+
+export interface AccessTokenClaims {
+  sub: string;
+  email: string;
+  role: "super_admin" | "admin";
+  jti: string;
+  iat: number;
+  exp: number;
 }
 
-function base64UrlEncode(str: string): string {
-  return Buffer.from(str, "utf8").toString("base64url");
+export async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16);
+  const hash = (await scrypt(password, salt, 64)) as Buffer;
+  return `scrypt$${salt.toString("base64url")}$${hash.toString("base64url")}`;
 }
 
-function base64UrlDecode(str: string): string {
-  return Buffer.from(str, "base64url").toString("utf8");
+export async function verifyPassword(
+  password: string,
+  storedHash: string | undefined,
+): Promise<boolean> {
+  const parts = storedHash?.split("$");
+  const validEncoding =
+    storedHash !== undefined &&
+    storedHash.length <= 128 &&
+    parts?.length === 3 &&
+    parts[0] === "scrypt" &&
+    /^[A-Za-z0-9_-]+$/.test(parts[1]) &&
+    /^[A-Za-z0-9_-]+$/.test(parts[2]);
+  const decodedSalt = validEncoding
+    ? Buffer.from(parts[1], "base64url")
+    : Buffer.alloc(0);
+  const decodedHash = validEncoding
+    ? Buffer.from(parts[2], "base64url")
+    : Buffer.alloc(0);
+  const validFormat =
+    validEncoding && decodedSalt.length === 16 && decodedHash.length === 64;
+  const salt = validFormat ? decodedSalt : "vehicle-tracking-dummy-salt";
+  const expected = validFormat
+    ? decodedHash
+    : Buffer.from(dummyHash, "base64url");
+  const candidate = (await scrypt(password, salt, expected.length)) as Buffer;
+
+  return (
+    validFormat === true &&
+    candidate.length === expected.length &&
+    timingSafeEqual(candidate, expected)
+  );
 }
 
-/**
- * Signs a payload as a standard HS256 JWT using Node.js crypto.
- */
-export function signJwt(
-  payload: object,
-  secret: string,
-  expiresInSeconds = 86400,
-): string {
-  const header = { alg: "HS256", typ: "JWT" };
-  const now = Math.floor(Date.now() / 1000);
-  const fullPayload = {
-    ...payload,
-    iat: now,
-    exp: now + expiresInSeconds,
+function signature(value: string): Buffer {
+  return createHmac("sha256", env.jwtSecret).update(value).digest();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+export function createAccessToken(
+  admin: Pick<Admin, "id" | "email" | "role">,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): { token: string; tokenId: string; expiresAt: Date } {
+  const claims: AccessTokenClaims = {
+    sub: admin.id,
+    email: admin.email,
+    role: admin.role,
+    jti: randomUUID(),
+    iat: nowSeconds,
+    exp: nowSeconds + tokenLifetimeSeconds,
   };
+  const header = Buffer.from(
+    JSON.stringify({ alg: "HS256", typ: "JWT" }),
+  ).toString("base64url");
+  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  const content = `${header}.${payload}`;
 
-  const headerB64 = base64UrlEncode(JSON.stringify(header));
-  const payloadB64 = base64UrlEncode(JSON.stringify(fullPayload));
-  const data = `${headerB64}.${payloadB64}`;
-
-  const signature = createHmac("sha256", secret)
-    .update(data)
-    .digest("base64url");
-  return `${data}.${signature}`;
+  return {
+    token: `${content}.${signature(content).toString("base64url")}`,
+    tokenId: claims.jti,
+    expiresAt: new Date(claims.exp * 1000),
+  };
 }
 
-/**
- * Verifies and decodes a standard HS256 JWT using constant-time comparison.
- */
-export function verifyJwt<T = Record<string, unknown>>(
+export function verifyAccessToken(
   token: string,
-  secret: string,
-): T {
+): AccessTokenClaims | undefined {
   const parts = token.split(".");
-  if (parts.length !== 3) {
-    throw new Error("Invalid JWT token format");
+  if (parts.length !== 3) return undefined;
+
+  try {
+    const header: unknown = JSON.parse(
+      Buffer.from(parts[0], "base64url").toString("utf8"),
+    );
+    const payload: unknown = JSON.parse(
+      Buffer.from(parts[1], "base64url").toString("utf8"),
+    );
+    const actual = Buffer.from(parts[2], "base64url");
+    const expected = signature(`${parts[0]}.${parts[1]}`);
+
+    if (
+      !isRecord(header) ||
+      header.alg !== "HS256" ||
+      actual.length !== expected.length ||
+      !timingSafeEqual(actual, expected) ||
+      !isRecord(payload)
+    ) {
+      return undefined;
+    }
+
+    const { sub, email, role, jti, exp, iat } = payload;
+    if (
+      typeof sub !== "string" ||
+      typeof email !== "string" ||
+      (role !== "admin" && role !== "super_admin") ||
+      typeof jti !== "string" ||
+      typeof exp !== "number" ||
+      !Number.isSafeInteger(exp) ||
+      typeof iat !== "number" ||
+      !Number.isSafeInteger(iat) ||
+      exp <= Math.floor(Date.now() / 1000)
+    ) {
+      return undefined;
+    }
+
+    return { sub, email, role, jti, exp, iat };
+  } catch {
+    return undefined;
   }
-
-  const [headerB64, payloadB64, signatureB64] = parts;
-  const data = `${headerB64}.${payloadB64}`;
-
-  const expectedSignature = createHmac("sha256", secret)
-    .update(data)
-    .digest("base64url");
-
-  const sigBuf = Buffer.from(signatureB64, "base64url");
-  const expSigBuf = Buffer.from(expectedSignature, "base64url");
-
-  if (
-    sigBuf.length !== expSigBuf.length ||
-    !timingSafeEqual(sigBuf, expSigBuf)
-  ) {
-    throw new Error("Invalid JWT signature");
-  }
-
-  const payload = JSON.parse(base64UrlDecode(payloadB64)) as T & {
-    exp?: number;
-    iat?: number;
-  };
-
-  if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-    throw new Error("JWT token has expired");
-  }
-
-  return payload;
 }
 
-export class AuthService implements IAuthService {
-  constructor(
-    private readonly adminRepository: AdminRepository,
-    private readonly jwtSecret: string = env.jwtSecret,
-    private readonly tokenExpiresInSeconds: number = 86400, // 24 hours
-  ) {}
-
-  /**
-   * Validates admin login credentials.
-   * Returns safe AdminProfile on success, or null on invalid credentials.
-   */
-  async validateCredentials(
-    credentials: LoginCredentials,
-  ): Promise<AdminProfile | null> {
-    const admin = await this.adminRepository.findByEmail(credentials.email);
-    if (!admin?.isActive) {
-      return null;
-    }
-
-    const isValid = await verifyPassword(
-      credentials.password,
-      admin.passwordHash,
-    );
-    if (!isValid) {
-      return null;
-    }
-
-    return toAdminProfile(admin);
+export async function authenticateAdmin(
+  em: EntityManager,
+  email: string,
+  password: string,
+): Promise<Admin | undefined> {
+  const admin = await em.findOne(Admin, { email });
+  const passwordMatches = await verifyPassword(password, admin?.passwordHash);
+  if (!admin?.isActive || !passwordMatches) {
+    return undefined;
   }
 
-  /**
-   * Performs administrator login, returning JWT access token and safe AdminProfile.
-   */
-  async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    const admin = await this.adminRepository.findByEmail(credentials.email);
-    if (!admin?.isActive) {
-      throw new Error("Invalid email or password");
-    }
-
-    const isValid = await verifyPassword(
-      credentials.password,
-      admin.passwordHash,
-    );
-    if (!isValid) {
-      throw new Error("Invalid email or password");
-    }
-
-    const tokenPayload: AdminTokenPayload = {
-      sub: admin.id,
-      email: admin.email,
-      role: admin.role,
-    };
-
-    const accessToken = this.generateToken(
-      tokenPayload,
-      this.tokenExpiresInSeconds,
-    );
-
-    return {
-      accessToken,
-      tokenType: "Bearer",
-      expiresIn: this.tokenExpiresInSeconds,
-      admin: toAdminProfile(admin),
-    };
-  }
-
-  /**
-   * Generates a signed JWT for an administrator.
-   */
-  generateToken(
-    payload: Omit<AdminTokenPayload, "iat" | "exp">,
-    expiresInSeconds: number = this.tokenExpiresInSeconds,
-  ): string {
-    return signJwt(payload, this.jwtSecret, expiresInSeconds);
-  }
-
-  /**
-   * Verifies and parses a signed JWT.
-   */
-  verifyToken(token: string): AdminTokenPayload {
-    return verifyJwt<AdminTokenPayload>(token, this.jwtSecret);
-  }
+  return admin;
 }
