@@ -14,7 +14,10 @@
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "lint": "biome check .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "db:schema:create": "tsx src/database/create-schema.ts",
+    "db:schema:sql": "tsx src/database/dump-schema.ts",
+    "admin:create": "tsx src/database/create-admin.ts"
   },
   "engines": {
     "node": ">=22.17.0"

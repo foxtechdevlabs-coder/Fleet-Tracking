@@ -2,6 +2,7 @@
 /** @type {import('jest').Config} */
 export default {
   testEnvironment: "node",
+  setupFiles: ["<rootDir>/tests/unit/test-env.cjs"],
   roots: ["<rootDir>/src", "<rootDir>/tests"],
   testMatch: ["**/*.test.ts"],
   extensionsToTreatAsEsm: [".ts"],

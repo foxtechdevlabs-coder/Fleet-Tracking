@@ -6,7 +6,7 @@ export const healthRoutes = Router();
 
 /**
  * @openapi
- * /health:
+ * /api/v1/health:
  *   get:
  *     tags: [Health]
  *     summary: Check that the backend is running
@@ -21,5 +21,13 @@ export const healthRoutes = Router();
  *                 status:
  *                   type: string
  *                   example: ok
+ * /health:
+ *   get:
+ *     tags: [Health]
+ *     deprecated: true
+ *     summary: Compatibility alias for the versioned health check
+ *     responses:
+ *       200:
+ *         description: The backend is running.
  */
 healthRoutes.get("/", getHealth);
