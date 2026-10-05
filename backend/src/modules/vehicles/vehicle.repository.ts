@@ -1,7 +1,11 @@
 // Vehicle persistence operations.
 import type { EntityManager } from "@mikro-orm/postgresql";
 import { Vehicle } from "./vehicle.entity.js";
-import type { VehicleInput, VehicleUpdate } from "./vehicle.types.js";
+import type {
+  CreateVehicleInput,
+  VehicleInput,
+  VehicleUpdate,
+} from "./vehicle.types.js";
 
 export function listVehicles(
   em: EntityManager,
@@ -22,9 +26,26 @@ export function findVehicle(
   return em.findOne(Vehicle, { id });
 }
 
+/** Find a vehicle by its unique plate number. */
+export function findByPlateNumber(
+  em: EntityManager,
+  plateNumber: string,
+): Promise<Vehicle | null> {
+  return em.findOne(Vehicle, { plateNumber });
+}
+
+/** Check whether a vehicle with the given plate number already exists. */
+export async function existsByPlateNumber(
+  em: EntityManager,
+  plateNumber: string,
+): Promise<boolean> {
+  const count = await em.count(Vehicle, { plateNumber });
+  return count > 0;
+}
+
 export async function createVehicle(
   em: EntityManager,
-  input: VehicleInput,
+  input: VehicleInput | CreateVehicleInput,
 ): Promise<Vehicle> {
   const now = new Date();
   const vehicle = em.create(Vehicle, {
