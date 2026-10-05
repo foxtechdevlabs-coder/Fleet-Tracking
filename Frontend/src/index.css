@@ -1,0 +1,75 @@
+:root {
+  /* FleetTrack Enterprise Telematics Design Tokens */
+  --color-navy-dark: #0B192C;
+  --color-navy-mid: #1E3E62;
+  --color-black: #000000;
+  
+  --color-slate-bg: #F8FAFC;
+  --color-slate-card: #FFFFFF;
+  --color-slate-border: #E2E8F0;
+  --color-slate-border-subtle: #F1F5F9;
+  --color-slate-text: #0F172A;
+  --color-slate-muted: #64748B;
+  --color-slate-light: #94A3B8;
+
+  --color-accent-blue: #2563EB;
+  --color-accent-blue-hover: #1D4ED8;
+  --color-accent-blue-subtle: #EFF6FF;
+  
+  --color-accent-green: #10B981;
+  --color-accent-green-dark: #047857;
+  --color-accent-green-subtle: #ECFDF5;
+
+  --color-accent-red: #EF4444;
+  --color-accent-red-dark: #B91C1C;
+  --color-accent-red-subtle: #FEF2F2;
+
+  --color-accent-teal: #0D9488;
+  --color-accent-teal-subtle: #F0FDFA;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.06);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.07);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.12), 0 8px 10px -6px rgb(0 0 0 / 0.08);
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+  font-family: var(--font-sans);
+  background: var(--color-slate-bg);
+  color: var(--color-slate-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  font-family: inherit;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
