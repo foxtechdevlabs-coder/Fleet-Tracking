@@ -61,6 +61,8 @@ function Side() {
           <NavLink
             key={item.path}
             to={item.path}
+            title={item.name}
+            aria-label={item.name}
             className={({ isActive }) =>
               `side-item ${isActive ? "side-item-active" : ""}`
             }
@@ -74,10 +76,10 @@ function Side() {
       {/* Bottom Status */}
       <div className="nodes-status">
         <div className="node-left">
-          <span className="node-dot"></span>
-          <span>Nodes Online</span>
+          <span className="node-dot node-dot-preview"></span>
+          <span>UI Preview</span>
         </div>
-        <strong>248 / 250</strong>
+        <strong>API pending</strong>
       </div>
     </aside>
   );

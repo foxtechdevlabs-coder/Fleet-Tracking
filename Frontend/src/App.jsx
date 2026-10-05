@@ -19,7 +19,7 @@ function App() {
         {/* Authentication Route */}
         <Route path="/login" element={<Login />} />
 
-        {/* Protected Application Layout Routes */}
+        {/* Application layout routes */}
         <Route path="/" element={<AppLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Cont />} />

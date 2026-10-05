@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Radio, Clock, LogOut, ChevronRight } from "lucide-react";
+import { Clock, LogOut, ChevronRight } from "lucide-react";
 import "./Nav.css";
 import logo from "./logo.svg";
 
@@ -64,10 +64,9 @@ function Nav() {
       {/* Right Section */}
       <div className="nav-right">
         {/* Realtime Status */}
-        <div className="connection-status" title="Telemetry WebSocket Gateway Connected">
-          <span className="status-dot"></span>
-          <Radio size={12} className="status-icon" />
-          <span>Realtime Connected</span>
+        <div className="connection-status" title="Authentication and telemetry APIs are not connected">
+          <span className="status-dot status-dot-idle"></span>
+          <span>UI Preview</span>
         </div>
 
         {/* Live IST Time */}
@@ -80,11 +79,11 @@ function Nav() {
         </div>
 
         {/* User Profile */}
-        <div className="user-profile" title="Signed in as Alex Morgan">
-          <div className="avatar">AM</div>
+        <div className="user-profile" title="Fleet operator workspace preview">
+          <div className="avatar">FT</div>
           <div className="user-info">
-            <strong>Alex Morgan</strong>
-            <small>Fleet Admin</small>
+            <strong>Fleet Operator</strong>
+            <small>Workspace</small>
           </div>
         </div>
 

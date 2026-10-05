@@ -122,6 +122,11 @@
   color: #119b91;
 }
 
+.status-dot-idle {
+  background: #94a3b8;
+  animation: none;
+}
+
 /* Time */
 
 .nav-time {
@@ -220,4 +225,39 @@
 
 .exit-btn:hover .exit-icon {
   transform: translateX(2px);
+}
+
+@media (max-width: 950px) {
+  .nav-breadcrumb {
+    display: none;
+  }
+}
+
+@media (max-width: 680px) {
+  .top-nav {
+    padding: 0 12px;
+  }
+
+  .nav-logo {
+    width: auto;
+  }
+
+  .phase-badge,
+  .connection-status,
+  .user-info,
+  .exit-btn span {
+    display: none;
+  }
+
+  .nav-right {
+    gap: 10px;
+  }
+
+  .user-profile {
+    padding-left: 10px;
+  }
+
+  .exit-btn {
+    padding: 7px;
+  }
 }
