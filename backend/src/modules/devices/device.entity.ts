@@ -1,11 +1,12 @@
 // Device entity — GPS tracking device, optionally assigned to a vehicle.
 import { EntitySchema } from "@mikro-orm/core";
+import type { DeviceStatus } from "./device.types.js";
 
 export class Device {
   id!: string;
   identifier!: string;
   vehicleId!: string | null;
-  status!: "active" | "inactive" | "unassigned";
+  status!: DeviceStatus;
   lastSeenAt!: Date | null;
   createdAt!: Date;
   updatedAt!: Date;
