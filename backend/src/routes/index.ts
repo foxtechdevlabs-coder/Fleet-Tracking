@@ -14,4 +14,5 @@ routes.use("/api/v1/auth", adminAuthRoutes);
 routes.use("/api/v1/vehicles", vehicleRoutes);
 routes.use("/api/vehicles", vehicleRoutes);
 routes.use("/api/v1/devices", deviceRoutes);
+routes.use("/api/devices", deviceRoutes);
 routes.use("/api/v1/setup", setupRoutes);

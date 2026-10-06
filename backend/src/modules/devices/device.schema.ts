@@ -19,6 +19,18 @@ function objectBody(body: unknown): Record<string, unknown> {
 
 function readFields(body: unknown, partial: boolean): DeviceUpdate {
   const input = objectBody(body);
+  const allowedFields = ["identifier", "vehicleId", "status"];
+  const unsupportedFields = Object.keys(input).filter(
+    (field) => !allowedFields.includes(field),
+  );
+  if (unsupportedFields.length > 0) {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      `Unsupported device field(s): ${unsupportedFields.join(", ")}`,
+    );
+  }
+
   const output: DeviceUpdate = {};
   const has = (key: string) => Object.hasOwn(input, key);
 

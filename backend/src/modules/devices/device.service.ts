@@ -15,6 +15,19 @@ import type {
 
 export const listDevices = repository.listDevices;
 
+async function ensureIdentifierAvailable(
+  em: EntityManager,
+  identifier: string,
+): Promise<void> {
+  if (await repository.findDeviceByIdentifier(em, identifier)) {
+    throw new AppError(
+      409,
+      "DEVICE_IDENTIFIER_EXISTS",
+      "Device identifier already exists",
+    );
+  }
+}
+
 async function validateVehicle(
   em: EntityManager,
   vehicleId: string | null | undefined,
@@ -28,6 +41,7 @@ async function validateVehicle(
   }
 }
 
+<<<<<<< Updated upstream
 /**
  * Create a device after enforcing uniqueness and relationship integrity.
  *
@@ -70,6 +84,11 @@ export async function createDevice(
     }
   }
 
+=======
+export async function createDevice(em: EntityManager, input: DeviceInput) {
+  await ensureIdentifierAvailable(em, input.identifier);
+  await validateVehicle(em, input.vehicleId);
+>>>>>>> Stashed changes
   return repository.createDevice(em, input);
 }
 

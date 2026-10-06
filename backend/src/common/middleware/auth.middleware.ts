@@ -10,20 +10,12 @@ export const requireAdmin: RequestHandler = async (req, _res, next) => {
   const authorization = req.get("authorization");
   const match = authorization?.match(/^Bearer ([^\s]+)$/i);
   if (!match) {
-    throw new AppError(
-      401,
-      "UNAUTHENTICATED",
-      "A bearer access token is required",
-    );
+    throw new AppError(401, "UNAUTHORIZED", "Unauthorized");
   }
 
   const claims = verifyAccessToken(match[1]);
   if (!claims) {
-    throw new AppError(
-      401,
-      "INVALID_TOKEN",
-      "The access token is invalid or expired",
-    );
+    throw new AppError(401, "UNAUTHORIZED", "Unauthorized");
   }
 
   const em = getEntityManager(req);
@@ -33,11 +25,7 @@ export const requireAdmin: RequestHandler = async (req, _res, next) => {
   ]);
 
   if (!admin?.isActive || revoked) {
-    throw new AppError(
-      401,
-      "INVALID_TOKEN",
-      "The access token is invalid or expired",
-    );
+    throw new AppError(401, "UNAUTHORIZED", "Unauthorized");
   }
 
   req.admin = {

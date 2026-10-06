@@ -24,6 +24,17 @@ Authentication, Device, and combined setup routes below are implemented under
 Vehicle CRUD is available under the canonical `/api/vehicles` path (and remains
 available under `/api/v1/vehicles` for compatibility).
 
+Canonical Device and Vehicle JSON successes use
+`{ "success": true, "message": "...", "data": ... }`; paginated lists also
+include `meta`. Create responses use HTTP `201` and messages
+`Device created successfully` or `Vehicle created successfully`. Errors use
+`{ "success": false, "message": "...", "code": "..." }`: validation is `400`
+with `VALIDATION_ERROR`, authentication is `401` with `UNAUTHORIZED`, duplicate
+Device/Vehicle identifiers are `409` with `DEVICE_IDENTIFIER_EXISTS` or
+`VEHICLE_IDENTIFIER_EXISTS`, and unexpected failures are `500` with
+`INTERNAL_SERVER_ERROR`. The health probe and `204` logout/delete responses
+intentionally remain bodyless/dedicated contracts.
+
 | Method | Path | Request | Response |
 | --- | --- | --- | --- |
 | `POST` | `/auth/login` | JSON `{ "email": "...", "password": "..." }` | `200 { "data": { "accessToken", "tokenType": "Bearer", "expiresIn": 3600, "admin": { "id", "email", "name", "role" } } }` |
@@ -33,6 +44,9 @@ available under `/api/v1/vehicles` for compatibility).
 | `POST` | `/api/vehicles` | Bearer token; `plateNumber`, `make`, `model`, `year`; optional `status` | `201 { "success": true, "data": vehicle }` |
 | `GET`, `PUT`, `DELETE` | `/api/vehicles/{id}` | Bearer token; UUID path parameter; PUT requires all vehicle fields except optional status | `200 { "success": true, "data": vehicle }` for GET/PUT; `204` for DELETE |
 | `PATCH` | `/api/vehicles/{id}` | Compatibility partial update; Bearer token and UUID path parameter | `200 { "success": true, "data": vehicle }` |
+| `GET` | `/api/devices?page=1&limit=25` | Bearer token; optional pagination; limit 1-100 | `200 { "data": [...], "meta": { "page", "limit", "total" } }` |
+| `GET` | `/api/devices/{id}` | Bearer token; UUID path parameter | `200 { "data": device }` |
+| `PUT` | `/api/devices/{id}` | Bearer token; required `identifier`; optional `vehicleId` and `status` | `200 { "data": device }` |
 | `GET` | `/devices?page=1&limit=25` | Optional pagination; limit 1-100 | `200 { "data": [...], "meta": { "page", "limit", "total" } }` |
 | `POST` | `/devices` | `identifier`; optional `vehicleId`, `status` | `201 { "data": device }` |
 | `GET`, `PATCH`, `DELETE` | `/devices/{id}` | UUID path parameter; PATCH accepts `identifier`, `vehicleId` (UUID or null), or `status` | `200 { "data": device }` for GET/PATCH; `204` for DELETE |
@@ -47,6 +61,35 @@ identifiers return `409`; invalid input returns `400`; missing records return
 use `{ "success": false, "message": "...", "code": "..." }`; unexpected errors
 return `500` without exposing internal details. Invalid vehicle IDs are rejected
 with `400` before a database lookup.
+Creation validation requires non-empty `plateNumber`, `make`, `model`, and an
+integer `year` from 1900 through 2100 for vehicles, and a non-empty
+`identifier` for devices. Vehicle plate numbers are trimmed and uppercased;
+device identifiers are trimmed and limited to 100 characters. Optional
+`status` fields must be in their respective enum, and an optional Device
+`vehicleId` must be a UUID or `null` and refer to an existing vehicle.
+Repositories are preceded by service-level duplicate checks; the database
+unique indexes remain the concurrency-safe final guard.
+
+Both identifier constraints are already present in the MikroORM entities and
+`src/database/migrations/001_initial_schema.sql`; no new migration is needed.
+For a new/initial database, use `pnpm run db:schema:create`. This script is
+idempotent for the existing schema but does not retrofit changed DDL into
+already-created tables; verify the existing unique indexes when upgrading an
+older database.
+
+Device routes are also mounted under `/api/v1/devices` for compatibility.
+Device PUT accepts only the existing entity's writable master fields:
+`identifier`, `vehicleId`, and `status`. `identifier` is required; omitted
+optional values remain unchanged. `id`, `lastSeenAt`, timestamps, and arbitrary
+fields are rejected. Device identifiers are trimmed and must contain 1-100
+characters; a non-null `vehicleId` must be a UUID referencing an existing
+vehicle.
+
+Vehicle and device update repositories assign only validated master-data
+properties and flush the existing entity. They do not query or write
+`location_history` or `telemetry_events`; `lastSeenAt` is read-only for Device
+PUT. The API tests snapshot history rows and assert that both location and
+telemetry data remain unchanged across master-data updates.
 The combined setup endpoint validates all required vehicle/device fields and
 formats before opening its database transaction. It assigns the newly created
 device to the newly created vehicle; callers cannot supply a separate
@@ -74,6 +117,19 @@ The modules below are grounded in the current database schema and data-flow
 outline. They are API design targets, not live routes. Payloads and
 authorization rules should be finalized as those domain modules are
 implemented.
+
+The tracking module currently has no live ingestion route or processor. When
+the existing `src/modules/tracking/location.processor.ts` integration point is
+implemented, it should resolve the incoming `identifier` through
+`tracking.service.resolveTrackingDevice` before persisting a location. The
+resolver trims the same `Device.identifier` value accepted at Device creation,
+looks up the registered Device, and resolves the Vehicle from its stored
+`devices.vehicle_id`; it does not create Devices or accept a caller-supplied
+Device/Vehicle database ID. Unknown identifiers return `404 DEVICE_NOT_FOUND`.
+An unassigned Device is rejected with `409 DEVICE_NOT_ASSIGNED`, because
+`location_history.vehicle_id` is required. A dangling stored association
+returns `409 DEVICE_VEHICLE_ASSOCIATION_INVALID`. No new endpoint or payload
+format is implemented by this resolver.
 
 | Method | Path | Purpose / initial request fields |
 | --- | --- | --- |
