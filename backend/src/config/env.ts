@@ -24,61 +24,10 @@ function port(name: string): number {
   return value;
 }
 
-function origins(name: string): string[] {
-  const configured = process.env[name]?.trim();
-  const values = configured ? configured.split(",") : ["http://localhost:5173"];
-
-  return [
-    ...new Set(
-      values.map((value) => {
-        const candidate = value.trim();
-        let parsed: URL;
-
-        try {
-          parsed = new URL(candidate);
-        } catch {
-          throw new Error(
-            `Invalid ${name}: each value must be an HTTP(S) origin`,
-          );
-        }
-
-        if (
-          !["http:", "https:"].includes(parsed.protocol) ||
-          parsed.username ||
-          parsed.password ||
-          parsed.pathname !== "/" ||
-          parsed.search ||
-          parsed.hash
-        ) {
-          throw new Error(
-            `Invalid ${name}: each value must be an HTTP(S) origin`,
-          );
-        }
-
-        return parsed.origin;
-      }),
-    ),
-  ];
-}
-
-function jwtSecret(): string {
-  const value = required("JWT_SECRET");
-
-  if (Buffer.byteLength(value, "utf8") < 32) {
-    throw new Error("Invalid JWT_SECRET: use at least 32 bytes of random data");
-  }
-
-  return value;
-}
-
 export const env = {
   nodeEnv: process.env.NODE_ENV?.trim() || "development",
 
   port: port("PORT"),
-
-  frontendOrigins: origins("FRONTEND_ORIGINS"),
-
-  jwtSecret: jwtSecret(),
 
   databaseUrl:
     process.env.DATABASE_URL?.trim() ||
@@ -87,6 +36,18 @@ export const env = {
     )}:${encodeURIComponent(
       required("DB_PASSWORD"),
     )}@${required("DB_HOST")}:${port("DB_PORT")}/${required("DB_NAME")}`,
+
+  jwtSecret:
+    process.env.JWT_SECRET?.trim() || "dev-secret-change-in-production",
+
+  adminInitialEmail:
+    process.env.ADMIN_INITIAL_EMAIL?.trim() || "admin@example.com",
+
+  adminInitialPassword:
+    process.env.ADMIN_INITIAL_PASSWORD?.trim() || "Admin123!",
+
+  adminInitialName:
+    process.env.ADMIN_INITIAL_NAME?.trim() || "System Administrator",
 } as const;
 
 export const isDevelopment = env.nodeEnv === "development";

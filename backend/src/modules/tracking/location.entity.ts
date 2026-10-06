@@ -85,4 +85,3 @@ export const LocationHistorySchema = new EntitySchema<LocationHistory>({
 });
 
 export { LocationHistory as Location, LocationHistorySchema as LocationSchema };
-
