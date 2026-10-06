@@ -17,15 +17,22 @@
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "db:schema:create": "tsx src/database/create-schema.ts",
-    "db:schema:sql": "tsx src/database/dump-schema.ts",
+    "migration:create": "mikro-orm migration:create",
+    "migration:up": "mikro-orm migration:up",
     "admin:create": "tsx src/database/seeds/create-admin.ts"
+  },
+  "mikro-orm": {
+    "configPaths": [
+      "./src/database/mikro-orm.config.ts",
+      "./dist/database/mikro-orm.config.js"
+    ]
   },
   "engines": {
     "node": ">=22.17.0"
   },
   "dependencies": {
     "@mikro-orm/core": "^7.2.2",
+    "@mikro-orm/migrations": "^7.2.2",
     "@mikro-orm/postgresql": "^7.2.2",
     "cors": "^2.8.6",
     "dotenv": "^18.0.4",
@@ -36,6 +43,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
     "@jest/globals": "^30.5.2",
+    "@mikro-orm/cli": "^7.2.2",
     "@swc/core": "^1.16.12",
     "@swc/jest": "^0.2.39",
     "@types/cors": "^2.8.19",

@@ -98,7 +98,7 @@ small process probe.
   exact comma-separated HTTP(S) origins in `FRONTEND_ORIGINS`, defaulting to
   `http://localhost:5173`.
 - **Persistence:** PostgreSQL is the system of record. Schema creation is
-  explicit via `pnpm run db:schema:create`; server startup checks connectivity
+  explicit via MikroORM migrations (`pnpm run migration:up`); server startup checks connectivity
   and fails rather than silently starting without the database.
 - **GPS devices:** preserve the existing vendor-neutral GPS adapter boundary.
   Normalize vendor input before location persistence; do not assume a device
