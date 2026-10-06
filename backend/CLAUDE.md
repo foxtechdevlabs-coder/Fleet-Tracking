@@ -20,6 +20,8 @@ pnpm run check           # biome check . && tsc --noEmit (run before committing)
 pnpm run build           # clean dist/, then tsc -> dist/
 pnpm start               # node dist/server.js (production; run build first)
 pnpm run typecheck       # tsc --noEmit
+pnpm run migration:create # MikroORM CLI: generate a migration from entity changes (diffed against the snapshot)
+pnpm run migration:up     # MikroORM CLI: apply pending migrations
 pnpm run admin:create    # create the first admin (src/database/seeds/create-admin.ts)
 pnpm run lint            # biome check .  (Biome only; no ESLint or Prettier)
 pnpm run format          # biome format --write .
@@ -53,7 +55,8 @@ pnpm 11 blocks dependency install scripts until they are approved. Each approval
 ### Configuration split
 - `src/config/env.ts` is the only place environment variables are read (dotenv plus validation). `PORT` and `DATABASE_URL` are required and startup fails clearly without them. Don't add a second env loader.
 - `src/config/database.ts` holds runtime database settings only (URL, debug). It opens no connections.
-- `src/database/mikro-orm.config.ts` holds the MikroORM config (default export, also usable by a future MikroORM CLI). Register entities in its `entities` array; `warnWhenNoEntities: false` exists only because there are none yet. MikroORM 7 core has no `@Entity` decorators (use `defineEntity` or the separate decorators package), and `tsx`/SWC don't emit decorator metadata. Decide the entity style before adding the first entity.
+- **Migrations** use `@mikro-orm/migrations` via `@mikro-orm/cli` (found through `mikro-orm.configPaths` in `package.json`, TS loaded with `tsx`). Files live in `src/database/migrations` (excluded from Biome because they are generated). The database is Supabase-hosted, so `schemaGenerator.ignoreSchema` lists Supabase's schemas; never remove it, or schema diffs will try to drop them. `snapshotOnMigrate: false` is deliberate: entities don't declare the FKs/CHECKs the initial SQL created, so the snapshot must come from entities, not the live DB.
+- `src/database/mikro-orm.config.ts` holds the MikroORM config (default export, also used by the MikroORM CLI). Register entities in its `entities` array; `warnWhenNoEntities: false` exists only because there are none yet. MikroORM 7 core has no `@Entity` decorators (use `defineEntity` or the separate decorators package), and `tsx`/SWC don't emit decorator metadata. Decide the entity style before adding the first entity.
 - MikroORM also reads `MIKRO_ORM_*` environment variables, but values in the config file take precedence.
 
 ### App and routing

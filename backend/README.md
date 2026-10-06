@@ -18,7 +18,7 @@ pnpm install
 Copy-Item .env.example .env
 # Generate a signing key with: node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 # Set DATABASE_URL and JWT_SECRET (at least 32 random bytes) in .env.
-pnpm run db:schema:create
+pnpm run migration:up
 pnpm run dev
 ```
 
@@ -37,8 +37,13 @@ starts listening.
 
 Authenticated endpoints require `Authorization: Bearer <accessToken>`.
 Administrator access tokens expire after one hour; logout revocations are
-stored in PostgreSQL, so run `pnpm run db:schema:create` after updating an
+stored in PostgreSQL, so run `pnpm run migration:up` after updating an
 existing database to create the `revoked_tokens` table.
+
+Database schema changes use MikroORM migrations in `src/database/migrations`.
+After changing an entity, run `pnpm run migration:create` to generate a
+migration from the difference, review it, then apply it with
+`pnpm run migration:up`.
 Vehicle CRUD is available at `GET/POST /api/vehicles` and
 `GET/PUT/DELETE /api/vehicles/:id`. Requests require a valid administrator
 token, and vehicle API responses use `{ "success": true, "data": ... }` or
