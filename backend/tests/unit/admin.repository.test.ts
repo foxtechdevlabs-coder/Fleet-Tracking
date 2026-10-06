@@ -28,7 +28,9 @@ describe("Admin Types & Repository", () => {
       createdAt: admin.createdAt,
       updatedAt: admin.updatedAt,
     });
-    expect((profile as unknown as Record<string, unknown>).passwordHash).toBeUndefined();
+    expect(
+      (profile as unknown as Record<string, unknown>).passwordHash,
+    ).toBeUndefined();
   });
 
   it("Admin.toProfile() method strips sensitive passwordHash", () => {
@@ -44,12 +46,15 @@ describe("Admin Types & Repository", () => {
 
     const profile = admin.toProfile();
 
-    expect((profile as unknown as Record<string, unknown>).passwordHash).toBeUndefined();
+    expect(
+      (profile as unknown as Record<string, unknown>).passwordHash,
+    ).toBeUndefined();
     expect(profile.email).toBe("fleet@example.com");
   });
 
   it("AdminRepository findByEmail queries lowercase normalized email", async () => {
-    const mockFindOne = jest.fn<(...args: unknown[]) => Promise<Admin | null>>();
+    const mockFindOne =
+      jest.fn<(...args: unknown[]) => Promise<Admin | null>>();
     const mockEm = {
       findOne: mockFindOne,
     } as unknown as EntityManager;
@@ -63,7 +68,8 @@ describe("Admin Types & Repository", () => {
   });
 
   it("AdminRepository findById queries by UUID", async () => {
-    const mockFindOne = jest.fn<(...args: unknown[]) => Promise<Admin | null>>();
+    const mockFindOne =
+      jest.fn<(...args: unknown[]) => Promise<Admin | null>>();
     const mockEm = {
       findOne: mockFindOne,
     } as unknown as EntityManager;
@@ -76,7 +82,9 @@ describe("Admin Types & Repository", () => {
   });
 
   it("AdminRepository count delegates to em.count", async () => {
-    const mockCount = jest.fn<(entity: unknown) => Promise<number>>().mockResolvedValue(1);
+    const mockCount = jest
+      .fn<(entity: unknown) => Promise<number>>()
+      .mockResolvedValue(1);
     const mockEm = {
       count: mockCount,
     } as unknown as EntityManager;

@@ -15,10 +15,12 @@ The user reviews and commits changes manually. Do not stage, commit or push unle
 
 ```bash
 pnpm install
-pnpm run dev             # tsx watch src/server.ts (needs .env with PORT and DATABASE_URL)
-pnpm run build           # tsc -> dist/
-pnpm start               # node dist/server.js
+pnpm run dev             # build, then tsc --watch (rebuild + type-check), biome check --watch and node --watch dist/server.js, via concurrently (needs .env)
+pnpm run check           # biome check . && tsc --noEmit (run before committing)
+pnpm run build           # clean dist/, then tsc -> dist/
+pnpm start               # node dist/server.js (production; run build first)
 pnpm run typecheck       # tsc --noEmit
+pnpm run admin:create    # create the first admin (src/database/seeds/create-admin.ts)
 pnpm run lint            # biome check .  (Biome only; no ESLint or Prettier)
 pnpm run format          # biome format --write .
 pnpm test                # Jest (ESM mode)
