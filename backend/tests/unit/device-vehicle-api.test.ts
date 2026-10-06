@@ -524,12 +524,12 @@ describe("authenticated device and vehicle APIs", () => {
       .put(`/api/devices/${db.device.id}`)
       .set("Authorization", db.auth)
       .send({
-        identifier: " GPS-002 ",
+        identifier: " GPS-004 ",
         vehicleId: db.vehicle.id,
         status: "inactive",
       });
     expect(deviceResponse.status).toBe(200);
-    expect(deviceResponse.body.data.identifier).toBe("GPS-002");
+    expect(deviceResponse.body.data.identifier).toBe("GPS-004");
     expect(deviceResponse.body.data.lastSeenAt).toBe(
       "2026-01-02T00:00:00.000Z",
     );

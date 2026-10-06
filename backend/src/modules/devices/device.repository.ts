@@ -26,25 +26,11 @@ export function findDevice(
   return em.findOne(Device, { id });
 }
 
-<<<<<<< Updated upstream
-/** Find a device by its unique identifier (IMEI / serial). */
-export function findByIdentifier(
-=======
 export function findDeviceByIdentifier(
->>>>>>> Stashed changes
   em: EntityManager,
   identifier: string,
 ): Promise<Device | null> {
   return em.findOne(Device, { identifier });
-}
-
-<<<<<<< Updated upstream
-/** Find the device currently linked to the given vehicle, if any. */
-export function findByVehicleId(
-  em: EntityManager,
-  vehicleId: string,
-): Promise<Device | null> {
-  return em.findOne(Device, { vehicleId });
 }
 
 /** Check whether a device with the given identifier already exists. */
@@ -56,8 +42,6 @@ export async function existsByIdentifier(
   return count > 0;
 }
 
-=======
->>>>>>> Stashed changes
 export async function createDevice(
   em: EntityManager,
   input: DeviceInput | CreateDeviceInput,
