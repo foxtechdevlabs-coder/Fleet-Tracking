@@ -64,7 +64,7 @@ describe("health and API discovery", () => {
       expect(response.status).toBe(401);
       expect(response.body).toMatchObject({
         success: false,
-        code: "UNAUTHENTICATED",
+        code: "UNAUTHORIZED",
       });
     }
 
@@ -79,7 +79,7 @@ describe("health and API discovery", () => {
     expect(response.body.paths["/api/v1/auth/login"].post).toBeDefined();
     expect(response.body.paths["/api/vehicles"].get).toBeDefined();
     expect(response.body.paths["/api/vehicles/{id}"].put).toBeDefined();
-    expect(response.body.paths["/api/v1/devices"].post).toBeDefined();
+    expect(response.body.paths["/api/devices"].post).toBeDefined();
     expect(
       response.body.paths["/api/v1/setup/vehicle-device"].post,
     ).toBeDefined();

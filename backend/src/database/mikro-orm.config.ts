@@ -15,6 +15,7 @@ import { VehicleSchema } from "../modules/vehicles/vehicle.entity.js";
 export default defineConfig({
   clientUrl: databaseConfig.url,
   debug: databaseConfig.debug,
+  driverOptions: { ssl: databaseConfig.ssl },
   // Never create the database automatically; a missing database is a startup error.
   ensureDatabase: false,
   entities: [
