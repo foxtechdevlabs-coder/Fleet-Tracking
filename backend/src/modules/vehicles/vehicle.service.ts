@@ -1,6 +1,5 @@
 // Vehicle business rules and not-found handling.
 import type { EntityManager } from "@mikro-orm/postgresql";
-import { AppError } from "../../common/errors/app-error.js";
 import {
   ConflictError,
   NotFoundError,

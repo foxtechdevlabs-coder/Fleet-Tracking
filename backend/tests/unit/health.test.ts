@@ -57,9 +57,10 @@ describe("health and API discovery", () => {
       "/api/v1/devices",
       "/api/v1/setup/vehicle-device",
     ]) {
-      const response = path.endsWith("/logout")
-        ? await request(app).post(path)
-        : await request(app).get(path);
+      const response =
+        path.endsWith("/logout") || path.endsWith("/vehicle-device")
+          ? await request(app).post(path)
+          : await request(app).get(path);
       expect(response.status).toBe(401);
       expect(response.body).toMatchObject({
         success: false,

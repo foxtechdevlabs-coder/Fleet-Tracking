@@ -1,15 +1,12 @@
 // Transactional device + vehicle combined creation.
 import type { EntityManager } from "@mikro-orm/postgresql";
-import {
-  ConflictError,
-  NotFoundError,
-} from "../../common/errors/app-errors.js";
-import type { Device } from "./device.entity.js";
+import { ConflictError } from "../../common/errors/app-errors.js";
 import type { Vehicle } from "../vehicles/vehicle.entity.js";
-import * as deviceRepository from "./device.repository.js";
 import * as vehicleRepository from "../vehicles/vehicle.repository.js";
-import type { CreateDeviceInput } from "./device.types.js";
 import type { CreateVehicleInput } from "../vehicles/vehicle.types.js";
+import type { Device } from "./device.entity.js";
+import * as deviceRepository from "./device.repository.js";
+import type { CreateDeviceInput } from "./device.types.js";
 
 /**
  * Create a Vehicle and a Device linked to it within a single transaction.
@@ -30,7 +27,12 @@ export async function createDeviceWithVehicle(
 ): Promise<{ vehicle: Vehicle; device: Device }> {
   return em.transactional(async (txEm) => {
     // --- Vehicle ---
-    if (await vehicleRepository.existsByPlateNumber(txEm, vehicleInput.plateNumber)) {
+    if (
+      await vehicleRepository.existsByPlateNumber(
+        txEm,
+        vehicleInput.plateNumber,
+      )
+    ) {
       throw new ConflictError(
         "Vehicle with this plate number already exists",
         "PLATE_NUMBER_EXISTS",
@@ -39,7 +41,9 @@ export async function createDeviceWithVehicle(
     const vehicle = await vehicleRepository.createVehicle(txEm, vehicleInput);
 
     // --- Device (linked to the new vehicle) ---
-    if (await deviceRepository.existsByIdentifier(txEm, deviceInput.identifier)) {
+    if (
+      await deviceRepository.existsByIdentifier(txEm, deviceInput.identifier)
+    ) {
       throw new ConflictError(
         "A device with this identifier already exists",
         "DEVICE_IDENTIFIER_EXISTS",
