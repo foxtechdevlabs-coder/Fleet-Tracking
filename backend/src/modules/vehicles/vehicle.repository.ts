@@ -26,14 +26,19 @@ export function findVehicle(
   return em.findOne(Vehicle, { id });
 }
 
+<<<<<<< Updated upstream
 /** Find a vehicle by its unique plate number. */
 export function findByPlateNumber(
+=======
+export function findVehicleByPlateNumber(
+>>>>>>> Stashed changes
   em: EntityManager,
   plateNumber: string,
 ): Promise<Vehicle | null> {
   return em.findOne(Vehicle, { plateNumber });
 }
 
+<<<<<<< Updated upstream
 /** Check whether a vehicle with the given plate number already exists. */
 export async function existsByPlateNumber(
   em: EntityManager,
@@ -43,6 +48,8 @@ export async function existsByPlateNumber(
   return count > 0;
 }
 
+=======
+>>>>>>> Stashed changes
 export async function createVehicle(
   em: EntityManager,
   input: VehicleInput | CreateVehicleInput,

@@ -46,9 +46,22 @@ migration from the difference, review it, then apply it with
 `pnpm run migration:up`.
 Vehicle CRUD is available at `GET/POST /api/vehicles` and
 `GET/PUT/DELETE /api/vehicles/:id`. Requests require a valid administrator
-token, and vehicle API responses use `{ "success": true, "data": ... }` or
-`{ "success": false, "message": "...", "code": "..." }`. The previous
+token. Device and Vehicle JSON responses use `{ "success": true, "message": "...", "data": ... }`;
+errors use `{ "success": false, "message": "...", "code": "..." }`. Missing,
+invalid, expired, and revoked bearer tokens return `401` with code
+`UNAUTHORIZED`. The previous
 `/api/v1/vehicles` and `PATCH /:id` paths remain as compatibility aliases.
+Device list/read/edit endpoints are available at
+`GET /api/devices`, `GET /api/devices/:id`, and `PUT /api/devices/:id`;
+`/api/v1/devices` remains available for compatibility. Vehicle and device PUT
+requests only accept approved master-data fields; location and telemetry
+history are not written by these updates.
+Vehicle creation requires non-empty `plateNumber`, `make`, `model`, and an
+integer `year` from 1900 through 2100; Device creation requires a non-empty
+`identifier`. Both identifiers are trimmed/normalized and must be unique.
+The MikroORM entities and existing `001_initial_schema.sql` already define
+database unique constraints for `vehicles.plate_number` and
+`devices.identifier`, so no additional migration is required.
 Use `POST /api/v1/setup/vehicle-device` with `{ "vehicle": { ... },
 "device": { ... } }` to validate and create a vehicle and its new assigned
 device as a single atomic setup flow.

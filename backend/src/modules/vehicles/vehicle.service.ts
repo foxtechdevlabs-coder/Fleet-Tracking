@@ -13,6 +13,7 @@ import type {
 
 export const listVehicles = repository.listVehicles;
 
+<<<<<<< Updated upstream
 /**
  * Create a vehicle after checking for plate number uniqueness.
  *
@@ -28,6 +29,14 @@ export async function createVehicle(
     throw new ConflictError(
       "Vehicle with this plate number already exists",
       "PLATE_NUMBER_EXISTS",
+=======
+export async function createVehicle(em: EntityManager, input: VehicleInput) {
+  if (await repository.findVehicleByPlateNumber(em, input.plateNumber)) {
+    throw new AppError(
+      409,
+      "VEHICLE_IDENTIFIER_EXISTS",
+      "Vehicle identifier already exists",
+>>>>>>> Stashed changes
     );
   }
   return repository.createVehicle(em, input);

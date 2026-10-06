@@ -54,20 +54,85 @@ export const openApiSpec = swaggerJsdoc({
         },
         VehicleResponse: {
           type: "object",
-          required: ["success", "data"],
+          required: ["success", "message", "data"],
           properties: {
             success: { type: "boolean", example: true },
+            message: {
+              type: "string",
+              example: "Vehicle operation successful",
+            },
             data: { $ref: "#/components/schemas/Vehicle" },
           },
         },
         VehicleListResponse: {
           type: "object",
-          required: ["success", "data", "meta"],
+          required: ["success", "message", "data", "meta"],
           properties: {
             success: { type: "boolean", example: true },
+            message: {
+              type: "string",
+              example: "Vehicles retrieved successfully",
+            },
             data: {
               type: "array",
               items: { $ref: "#/components/schemas/Vehicle" },
+            },
+            meta: {
+              type: "object",
+              required: ["page", "limit", "total"],
+              properties: {
+                page: { type: "integer" },
+                limit: { type: "integer" },
+                total: { type: "integer" },
+              },
+            },
+          },
+        },
+        Device: {
+          type: "object",
+          required: [
+            "id",
+            "identifier",
+            "vehicleId",
+            "status",
+            "lastSeenAt",
+            "createdAt",
+            "updatedAt",
+          ],
+          properties: {
+            id: { type: "string", format: "uuid" },
+            identifier: { type: "string", maxLength: 100 },
+            vehicleId: { type: "string", format: "uuid", nullable: true },
+            status: {
+              type: "string",
+              enum: ["active", "inactive", "unassigned"],
+            },
+            lastSeenAt: { type: "string", format: "date-time", nullable: true },
+            createdAt: { type: "string", format: "date-time" },
+            updatedAt: { type: "string", format: "date-time" },
+          },
+        },
+        DeviceResponse: {
+          type: "object",
+          required: ["success", "message", "data"],
+          properties: {
+            success: { type: "boolean", example: true },
+            message: { type: "string", example: "Device operation successful" },
+            data: { $ref: "#/components/schemas/Device" },
+          },
+        },
+        DeviceListResponse: {
+          type: "object",
+          required: ["success", "message", "data", "meta"],
+          properties: {
+            success: { type: "boolean", example: true },
+            message: {
+              type: "string",
+              example: "Devices retrieved successfully",
+            },
+            data: {
+              type: "array",
+              items: { $ref: "#/components/schemas/Device" },
             },
             meta: {
               type: "object",
@@ -88,14 +153,24 @@ export const openApiSpec = swaggerJsdoc({
             message: { type: "string" },
             code: { type: "string" },
           },
+          example: {
+            success: false,
+            message: "Validation failed",
+            code: "VALIDATION_ERROR",
+          },
         },
       },
       responses: {
         BadRequest: {
-          description: "Invalid request or vehicle ID.",
+          description: "Invalid request data.",
           content: {
             "application/json": {
               schema: { $ref: "#/components/schemas/ApiError" },
+              example: {
+                success: false,
+                message: "Validation failed",
+                code: "VALIDATION_ERROR",
+              },
             },
           },
         },
@@ -104,6 +179,11 @@ export const openApiSpec = swaggerJsdoc({
           content: {
             "application/json": {
               schema: { $ref: "#/components/schemas/ApiError" },
+              example: {
+                success: false,
+                message: "Unauthorized",
+                code: "UNAUTHORIZED",
+              },
             },
           },
         },
@@ -115,19 +195,50 @@ export const openApiSpec = swaggerJsdoc({
             },
           },
         },
-        Conflict: {
-          description: "A vehicle with this plate number already exists.",
+        DeviceNotFound: {
+          description: "Device was not found.",
           content: {
             "application/json": {
               schema: { $ref: "#/components/schemas/ApiError" },
             },
           },
         },
-        ServerError: {
-          description: "Unexpected server error.",
+        Conflict: {
+          description: "Vehicle identifier already exists.",
           content: {
             "application/json": {
               schema: { $ref: "#/components/schemas/ApiError" },
+              example: {
+                success: false,
+                message: "Vehicle identifier already exists",
+                code: "VEHICLE_IDENTIFIER_EXISTS",
+              },
+            },
+          },
+        },
+        DeviceConflict: {
+          description: "A device with this identifier already exists.",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ApiError" },
+              example: {
+                success: false,
+                message: "Device identifier already exists",
+                code: "DEVICE_IDENTIFIER_EXISTS",
+              },
+            },
+          },
+        },
+        ServerError: {
+          description: "Unexpected backend or database failure.",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ApiError" },
+              example: {
+                success: false,
+                message: "Internal server error",
+                code: "INTERNAL_SERVER_ERROR",
+              },
             },
           },
         },
