@@ -4,10 +4,11 @@ Vehicle Tracking System — Phase 1 backend.
 
 Planned stack: Node.js, Express, TypeScript, PostgreSQL, MikroORM, Socket.IO, Zod.
 
-**Status:** admin authentication and authenticated Vehicle/Device CRUD endpoints
-and an atomic vehicle-plus-device setup endpoint are implemented alongside the
-health endpoint. Tracking, telemetry, trip, report, settings, and real-time/GPS
-routes remain planned.
+**Status:** admin authentication, authenticated Vehicle/Device CRUD, atomic
+vehicle-plus-device setup, authenticated normalized location ingestion, and
+location reports are implemented alongside the health endpoint. Tracking
+history queries, telemetry, trip, settings, and real-time/GPS routes remain
+planned.
 
 ## Local development
 
@@ -65,6 +66,15 @@ database unique constraints for `vehicles.plate_number` and
 Use `POST /api/v1/setup/vehicle-device` with `{ "vehicle": { ... },
 "device": { ... } }` to validate and create a vehicle and its new assigned
 device as a single atomic setup flow.
+`POST /api/v1/tracking/ingest` stores a normalized location for a registered
+`deviceIdentifier`. It requires an administrator bearer token, validates the
+location data, and derives the Vehicle from the Device's stored assignment;
+clients cannot supply a Device or Vehicle database ID. Successful ingestion
+updates both location history and the existing `latest_locations` live-position
+record atomically.
+`GET /api/v1/reports/locations` returns stored location history and accepts
+inclusive `from`/`to` timestamps, an existing `vehicleId`, and/or a registered
+`deviceIdentifier`; supplied filters are combined in the database query.
 
 Run `pnpm run typecheck`, `pnpm test`, and `pnpm run lint` to validate changes.
 

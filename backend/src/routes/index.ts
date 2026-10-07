@@ -3,7 +3,9 @@ import { Router } from "express";
 import { adminAuthRoutes } from "../modules/auth/auth.routes.js";
 import { deviceRoutes } from "../modules/devices/device.routes.js";
 import { healthRoutes } from "../modules/health/health.routes.js";
+import { reportRoutes } from "../modules/reports/report.routes.js";
 import { setupRoutes } from "../modules/setup/setup.routes.js";
+import { trackingRoutes } from "../modules/tracking/tracking.routes.js";
 import { vehicleRoutes } from "../modules/vehicles/vehicle.routes.js";
 
 export const routes = Router();
@@ -16,3 +18,5 @@ routes.use("/api/vehicles", vehicleRoutes);
 routes.use("/api/v1/devices", deviceRoutes);
 routes.use("/api/devices", deviceRoutes);
 routes.use("/api/v1/setup", setupRoutes);
+routes.use("/api/v1/tracking", trackingRoutes);
+routes.use("/api/v1/reports", reportRoutes);

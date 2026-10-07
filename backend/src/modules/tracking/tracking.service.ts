@@ -3,8 +3,16 @@ import type { EntityManager } from "@mikro-orm/postgresql";
 import { AppError } from "../../common/errors/app-error.js";
 import * as deviceRepository from "../devices/device.repository.js";
 import * as vehicleRepository from "../vehicles/vehicle.repository.js";
-import { parseTrackingDeviceIdentifier } from "./tracking.schema.js";
-import type { ResolvedTrackingDevice } from "./tracking.types.js";
+import * as repository from "./tracking.repository.js";
+import {
+  parseTrackingDeviceIdentifier,
+  type TrackingLocationInput,
+} from "./tracking.schema.js";
+import type {
+  CreateTrackingLocationInput,
+  PersistedTrackingLocation,
+  ResolvedTrackingDevice,
+} from "./tracking.types.js";
 
 export async function resolveTrackingDevice(
   em: EntityManager,
@@ -39,4 +47,30 @@ export async function resolveTrackingDevice(
   }
 
   return { device, vehicle };
+}
+
+export async function ingestLocation(
+  em: EntityManager,
+  input: TrackingLocationInput,
+): Promise<PersistedTrackingLocation> {
+  return em.transactional(async (transactionalEm) => {
+    const { device, vehicle } = await resolveTrackingDevice(
+      transactionalEm,
+      input.deviceIdentifier,
+    );
+    const { deviceIdentifier: _deviceIdentifier, ...locationInput } = input;
+    const location = await repository.createLocationHistory(
+      transactionalEm,
+      locationInput satisfies CreateTrackingLocationInput,
+      device.id,
+      vehicle.id,
+    );
+    await repository.upsertLatestLocation(
+      transactionalEm,
+      locationInput,
+      vehicle.id,
+    );
+
+    return { location, device, vehicle };
+  });
 }
