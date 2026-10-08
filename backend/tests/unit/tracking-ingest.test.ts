@@ -93,16 +93,24 @@ function createFixture(options?: {
   let failFlush = options?.failFlush ?? false;
   const failLatestUpsert = options?.failLatestUpsert ?? false;
   let pending: object[] = [];
+  const findOneCalls: {
+    entity: EntityClass;
+    where: Record<string, unknown>;
+  }[] = [];
+  let latestPositionUpserts = 0;
   const em: TestEntityManager = {
     async findOne(entity: EntityClass, where: Record<string, unknown>) {
+      findOneCalls.push({ entity, where });
       return (
-        tables
-          .get(entity)
-          ?.find((row) =>
-            Object.entries(where).every(
-              ([key, value]) => (row as Record<string, unknown>)[key] === value,
-            ),
-          ) ?? null
+        tables.get(entity)?.find((row) =>
+          Object.entries(where).every(([key, value]) => {
+            const actual = (row as Record<string, unknown>)[key];
+            if (actual instanceof Date && value instanceof Date) {
+              return actual.getTime() === value.getTime();
+            }
+            return actual === value;
+          }),
+        ) ?? null
       );
     },
     transactional<T>(
@@ -143,6 +151,7 @@ function createFixture(options?: {
       _options: { onConflictFields: string[]; onConflictAction: "merge" },
     ) {
       if (failLatestUpsert) throw new Error("private latest-position failure");
+      latestPositionUpserts += 1;
       const rows = tables.get(entity);
       const existing = rows?.find(
         (row) => (row as Record<string, unknown>).vehicleId === input.vehicleId,
@@ -164,6 +173,10 @@ function createFixture(options?: {
     storedLocations: tables.get(LocationHistory) ?? [],
     livePositions: tables.get(LatestLocation) ?? [],
     initialLivePosition: structuredClone(initialLivePosition),
+    findOneCalls,
+    get latestPositionUpserts() {
+      return latestPositionUpserts;
+    },
     failFlush() {
       failFlush = true;
     },
@@ -212,6 +225,97 @@ describe("POST /api/v1/tracking/ingest", () => {
       speed: 32.5,
       heading: 180,
     });
+    expect(
+      fixture.findOneCalls.filter(({ entity }) => entity === Device),
+    ).toHaveLength(1);
+    expect(
+      fixture.findOneCalls.filter(({ entity }) => entity === Vehicle),
+    ).toHaveLength(1);
+    expect(
+      fixture.findOneCalls.filter(({ entity }) => entity === LocationHistory),
+    ).toHaveLength(1);
+  });
+
+  it("does not persist or refresh live position for a duplicate Device timestamp", async () => {
+    const fixture = createFixture();
+    const first = await request(fixture.app)
+      .post("/api/v1/tracking/ingest")
+      .set("Authorization", fixture.auth)
+      .send(validLocation);
+    const liveAfterFirst = structuredClone(fixture.livePositions[0]);
+
+    const duplicate = await request(fixture.app)
+      .post("/api/v1/tracking/ingest")
+      .set("Authorization", fixture.auth)
+      .send(validLocation);
+
+    expect(first.status).toBe(201);
+    expect(duplicate.status).toBe(200);
+    expect(duplicate.body).toEqual({
+      success: true,
+      message: "Location was already recorded",
+      data: first.body.data,
+    });
+    expect(fixture.storedLocations).toHaveLength(1);
+    expect(fixture.livePositions).toEqual([liveAfterFirst]);
+    expect(fixture.latestPositionUpserts).toBe(1);
+    expect(
+      fixture.findOneCalls.filter(({ entity }) => entity === Device),
+    ).toHaveLength(2);
+    expect(
+      fixture.findOneCalls.filter(({ entity }) => entity === Vehicle),
+    ).toHaveLength(2);
+    expect(
+      fixture.findOneCalls.filter(({ entity }) => entity === LocationHistory),
+    ).toHaveLength(2);
+  });
+
+  it("accepts distinct timestamps with identical location values", async () => {
+    const fixture = createFixture();
+    const first = await request(fixture.app)
+      .post("/api/v1/tracking/ingest")
+      .set("Authorization", fixture.auth)
+      .send(validLocation);
+    const second = await request(fixture.app)
+      .post("/api/v1/tracking/ingest")
+      .set("Authorization", fixture.auth)
+      .send({
+        ...validLocation,
+        recordedAt: "2026-10-07T05:21:00.000Z",
+      });
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(fixture.storedLocations).toHaveLength(2);
+    expect(fixture.storedLocations[1]).toMatchObject({
+      latitude: fixture.storedLocations[0]?.latitude,
+      longitude: fixture.storedLocations[0]?.longitude,
+      deviceId: fixture.device.id,
+      vehicleId: fixture.vehicle.id,
+    });
+    expect(fixture.latestPositionUpserts).toBe(2);
+  });
+
+  it("accepts stale timestamps because no freshness window is defined", async () => {
+    const fixture = createFixture();
+    const staleLocation = {
+      ...validLocation,
+      recordedAt: "2000-01-01T00:00:00.000Z",
+    };
+    const first = await request(fixture.app)
+      .post("/api/v1/tracking/ingest")
+      .set("Authorization", fixture.auth)
+      .send(staleLocation);
+    const replay = await request(fixture.app)
+      .post("/api/v1/tracking/ingest")
+      .set("Authorization", fixture.auth)
+      .send(staleLocation);
+
+    expect(first.status).toBe(201);
+    expect(first.body.data.recordedAt).toBe(staleLocation.recordedAt);
+    expect(replay.status).toBe(200);
+    expect(fixture.storedLocations).toHaveLength(1);
+    expect(fixture.latestPositionUpserts).toBe(1);
   });
 
   it.each([
@@ -244,6 +348,17 @@ describe("POST /api/v1/tracking/ingest", () => {
   );
 
   it.each([
+    ["empty Device identifier", { ...validLocation, deviceIdentifier: "  " }],
+    [
+      "oversized Device identifier",
+      { ...validLocation, deviceIdentifier: "x".repeat(101) },
+    ],
+    ["timestamp with wrong type", { ...validLocation, recordedAt: 123 }],
+    ["latitude with wrong type", { ...validLocation, latitude: "51.5" }],
+    ["null latitude", { ...validLocation, latitude: null }],
+    ["longitude with wrong type", { ...validLocation, longitude: "-0.12" }],
+    ["null longitude", { ...validLocation, longitude: null }],
+    ["speed with wrong type", { ...validLocation, speed: "32" }],
     ["latitude below range", { ...validLocation, latitude: -90.01 }],
     ["latitude above range", { ...validLocation, latitude: 90.01 }],
     ["longitude below range", { ...validLocation, longitude: -180.01 }],
@@ -268,6 +383,7 @@ describe("POST /api/v1/tracking/ingest", () => {
       code: "VALIDATION_ERROR",
     });
     expect(fixture.storedLocations).toHaveLength(0);
+    expect(fixture.latestPositionUpserts).toBe(0);
     expect(fixture.livePositions).toEqual([fixture.initialLivePosition]);
   });
 

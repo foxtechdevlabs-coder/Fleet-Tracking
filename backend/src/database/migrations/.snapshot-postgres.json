@@ -682,6 +682,17 @@
         },
         {
           "columnNames": [
+            "device_id",
+            "recorded_at"
+          ],
+          "composite": true,
+          "constraint": true,
+          "keyName": "uq_location_history_device_recorded_at",
+          "primary": false,
+          "unique": true
+        },
+        {
+          "columnNames": [
             "recorded_at"
           ],
           "composite": false,

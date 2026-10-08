@@ -34,6 +34,13 @@ export const reportRoutes = Router();
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/LocationReportResponse' }
+ *             examples:
+ *               empty:
+ *                 summary: No stored records match the filters
+ *                 value:
+ *                   success: true
+ *                   message: Location report retrieved successfully
+ *                   data: []
  *       400: { $ref: '#/components/responses/BadRequest' }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       404: { $ref: '#/components/responses/TrackingResourceNotFound' }

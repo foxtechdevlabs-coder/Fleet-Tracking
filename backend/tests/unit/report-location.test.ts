@@ -1,6 +1,6 @@
 // HTTP tests for filtered location reports.
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it, jest } from "@jest/globals";
 import request from "supertest";
 import { createApp } from "../../src/app.js";
 import { Admin } from "../../src/modules/admins/admin.entity.js";
@@ -17,7 +17,10 @@ type EntityClass =
   | typeof LocationHistory
   | typeof Vehicle;
 
-function createDatabase() {
+function createDatabase(options?: {
+  includeLocations?: boolean;
+  failReportQuery?: boolean;
+}) {
   const vehicle = Object.assign(new Vehicle(), { id: randomUUID() });
   const otherVehicle = Object.assign(new Vehicle(), { id: randomUUID() });
   const emptyVehicle = Object.assign(new Vehicle(), { id: randomUUID() });
@@ -91,9 +94,10 @@ function createDatabase() {
     [RevokedToken, []],
     [Vehicle, [vehicle, otherVehicle, emptyVehicle]],
     [Device, [device, otherDevice, otherVehicleDevice, emptyDevice]],
-    [LocationHistory, rows],
+    [LocationHistory, options?.includeLocations === false ? [] : rows],
   ]);
   const reportQueries: Record<string, unknown>[] = [];
+  const failReportQuery = options?.failReportQuery ?? false;
   const em = {
     async findOne(entity: EntityClass, where: Record<string, unknown>) {
       return (
@@ -109,8 +113,11 @@ function createDatabase() {
     async find(
       entity: EntityClass,
       where: Record<string, unknown>,
-      options: { orderBy: { recordedAt: "ASC" } },
+      queryOptions: { orderBy: { recordedAt: "ASC" } },
     ) {
+      if (entity === LocationHistory && failReportQuery) {
+        throw new Error("private report database details");
+      }
       reportQueries.push(where);
       const matches = (tables.get(entity) ?? []).filter((row) =>
         Object.entries(where).every(([key, expected]) => {
@@ -130,7 +137,7 @@ function createDatabase() {
         (a, b) =>
           ((a as LocationHistory).recordedAt.getTime() -
             (b as LocationHistory).recordedAt.getTime()) *
-          (options.orderBy.recordedAt === "ASC" ? 1 : -1),
+          (queryOptions.orderBy.recordedAt === "ASC" ? 1 : -1),
       );
       return matches;
     },
@@ -177,6 +184,18 @@ describe("GET /api/v1/reports/locations", () => {
     const response = await getReport(db.app, db.auth);
     expect(response.status).toBe(200);
     expect(response.body.data).toHaveLength(4);
+  });
+
+  it("returns an empty collection when no tracking data is stored", async () => {
+    const db = createDatabase({ includeLocations: false });
+    const response = await getReport(db.app, db.auth);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      success: true,
+      message: "Location report retrieved successfully",
+      data: [],
+    });
   });
 
   it("applies inclusive date bounds in the database query", async () => {
@@ -376,5 +395,59 @@ describe("GET /api/v1/reports/locations", () => {
       latitude: null,
       longitude: null,
     });
+  });
+
+  it("returns ordered, export-ready rows with only approved report fields", async () => {
+    const db = createDatabase();
+    const response = await getReport(
+      db.app,
+      db.auth,
+      `?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&vehicleId=${db.vehicle.id}&deviceIdentifier=${db.device.identifier}`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toHaveLength(1);
+    expect(Object.keys(response.body.data[0])).toEqual([
+      "recordedAt",
+      "vehicleId",
+      "deviceId",
+      "latitude",
+      "longitude",
+      "speed",
+      "heading",
+      "altitude",
+    ]);
+    expect(response.body.data[0]).toEqual({
+      recordedAt: "2026-01-02T00:00:00.000Z",
+      vehicleId: db.vehicle.id,
+      deviceId: db.device.id,
+      latitude: 90,
+      longitude: -180,
+      speed: null,
+      heading: null,
+      altitude: null,
+    });
+    expect(response.body.data[0]).not.toHaveProperty("id");
+    expect(response.body.data[0]).not.toHaveProperty("ingestedAt");
+  });
+
+  it("returns a safe error and logs repository failures", async () => {
+    const db = createDatabase({ failReportQuery: true });
+    const log = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const response = await getReport(db.app, db.auth);
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({
+        success: false,
+        message: "Internal server error",
+        code: "INTERNAL_SERVER_ERROR",
+      });
+      expect(JSON.stringify(response.body)).not.toContain(
+        "private report database details",
+      );
+      expect(log).toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
   });
 });

@@ -8,9 +8,11 @@ export const ingest: RequestHandler = async (req, res) => {
   const input = parseTrackingLocation(req.body);
   const result = await ingestLocation(getEntityManager(req), input);
 
-  res.status(201).json({
+  res.status(result.duplicate ? 200 : 201).json({
     success: true,
-    message: "Location recorded successfully",
+    message: result.duplicate
+      ? "Location was already recorded"
+      : "Location recorded successfully",
     data: result.location,
   });
 };

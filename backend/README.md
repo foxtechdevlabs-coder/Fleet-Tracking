@@ -71,7 +71,10 @@ device as a single atomic setup flow.
 location data, and derives the Vehicle from the Device's stored assignment;
 clients cannot supply a Device or Vehicle database ID. Successful ingestion
 updates both location history and the existing `latest_locations` live-position
-record atomically.
+record atomically. Repeated submissions for the same Device and `recordedAt`
+return the original record with HTTP `200` and do not refresh live position.
+The unique `(device_id, recorded_at)` index enforces this key under concurrent
+requests.
 `GET /api/v1/reports/locations` returns stored location history and accepts
 inclusive `from`/`to` timestamps, an existing `vehicleId`, and/or a registered
 `deviceIdentifier`; supplied filters are combined in the database query.

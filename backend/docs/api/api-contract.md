@@ -153,8 +153,11 @@ Example request:
 
 The existing `src/modules/tracking/location.processor.ts` remains a placeholder;
 the new endpoint service performs validation, registered-device resolution, and
-location-history persistence. No vendor protocol or hardware-specific payload
-is assumed.
+location-history persistence. Repeated ingestions with the same registered
+Device and `recordedAt` return the original record; a unique database index
+protects this idempotency key under concurrent requests. Socket.IO is not
+installed or exposed, so this flow does not emit realtime events. No vendor
+protocol or hardware-specific payload is assumed.
 
 ## Location reports
 

@@ -183,50 +183,50 @@ export const openApiSpec = swaggerJsdoc({
                 ingestedAt: { type: "string", format: "date-time" },
               },
             },
-            LocationReportResponse: {
-              type: "object",
-              required: ["success", "message", "data"],
-              properties: {
-                success: { type: "boolean", example: true },
-                message: {
-                  type: "string",
-                  example: "Location report retrieved successfully",
-                },
-                data: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    required: [
-                      "recordedAt",
-                      "vehicleId",
-                      "deviceId",
-                      "latitude",
-                      "longitude",
-                      "speed",
-                      "heading",
-                      "altitude",
-                    ],
-                    properties: {
-                      recordedAt: { type: "string", format: "date-time" },
-                      vehicleId: { type: "string", format: "uuid" },
-                      deviceId: { type: "string", format: "uuid" },
-                      latitude: {
-                        type: "number",
-                        minimum: -90,
-                        maximum: 90,
-                        nullable: true,
-                      },
-                      longitude: {
-                        type: "number",
-                        minimum: -180,
-                        maximum: 180,
-                        nullable: true,
-                      },
-                      speed: { type: "number", nullable: true },
-                      heading: { type: "number", nullable: true },
-                      altitude: { type: "number", nullable: true },
-                    },
+          },
+        },
+        LocationReportResponse: {
+          type: "object",
+          required: ["success", "message", "data"],
+          properties: {
+            success: { type: "boolean", example: true },
+            message: {
+              type: "string",
+              example: "Location report retrieved successfully",
+            },
+            data: {
+              type: "array",
+              items: {
+                type: "object",
+                required: [
+                  "recordedAt",
+                  "vehicleId",
+                  "deviceId",
+                  "latitude",
+                  "longitude",
+                  "speed",
+                  "heading",
+                  "altitude",
+                ],
+                properties: {
+                  recordedAt: { type: "string", format: "date-time" },
+                  vehicleId: { type: "string", format: "uuid" },
+                  deviceId: { type: "string", format: "uuid" },
+                  latitude: {
+                    type: "number",
+                    minimum: -90,
+                    maximum: 90,
+                    nullable: true,
                   },
+                  longitude: {
+                    type: "number",
+                    minimum: -180,
+                    maximum: 180,
+                    nullable: true,
+                  },
+                  speed: { type: "number", nullable: true },
+                  heading: { type: "number", nullable: true },
+                  altitude: { type: "number", nullable: true },
                 },
               },
             },

@@ -11,7 +11,7 @@ export const trackingRoutes = Router();
  *   post:
  *     tags: [Tracking]
  *     summary: Store a normalized device location
- *     description: Requires an administrator bearer token. The registered Device is found by deviceIdentifier, and vehicleId is resolved from its stored association. Clients cannot provide Device or Vehicle database IDs.
+ *     description: Requires an administrator bearer token. The registered Device is found by deviceIdentifier, and vehicleId is resolved from its stored association. Repeated submissions for the same Device and recordedAt timestamp return the original record without refreshing the latest position. Clients cannot provide Device or Vehicle database IDs.
  *     security: [{ bearerAuth: [] }]
  *     requestBody:
  *       required: true
@@ -38,6 +38,11 @@ export const trackingRoutes = Router();
  *             heading: 180
  *             altitude: 15
  *     responses:
+ *       200:
+ *         description: The Device and recordedAt timestamp were already processed; the original record is returned.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/TrackingLocationResponse' }
  *       201:
  *         description: Location history stored and the resolved Vehicle's latest position refreshed.
  *         content:
