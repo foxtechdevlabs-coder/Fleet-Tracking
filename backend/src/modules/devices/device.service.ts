@@ -5,15 +5,23 @@ import {
   ConflictError,
   NotFoundError,
 } from "../../common/errors/app-errors.js";
+import {
+  resolveDeviceForVehicle,
+  resolveVehicleForDevice,
+} from "../tracking/tracking-resolver.service.js";
 import { Vehicle } from "../vehicles/vehicle.entity.js";
 import * as repository from "./device.repository.js";
 import type {
   CreateDeviceInput,
   DeviceInput,
+  DeviceSearchFilters,
   DeviceUpdate,
+  DeviceVehicleProfile,
 } from "./device.types.js";
 
 export const listDevices = repository.listDevices;
+export const listDevicesWithVehicles = repository.listDevicesWithVehicles;
+export { resolveDeviceForVehicle, resolveVehicleForDevice };
 
 async function validateVehicle(
   em: EntityManager,
@@ -92,4 +100,42 @@ export async function updateDevice(
 
 export async function deleteDevice(em: EntityManager, id: string) {
   await repository.deleteDevice(em, await getDevice(em, id));
+}
+
+export class DeviceService {
+  constructor(private readonly em: EntityManager) {}
+
+  listDevices(limit: number, offset: number) {
+    return repository.listDevices(this.em, limit, offset);
+  }
+
+  listDevicesWithVehicles(
+    filters?: DeviceSearchFilters,
+  ): Promise<DeviceVehicleProfile[]> {
+    return repository.listDevicesWithVehicles(this.em, filters);
+  }
+
+  getDevice(id: string) {
+    return getDevice(this.em, id);
+  }
+
+  createDevice(input: DeviceInput | CreateDeviceInput) {
+    return createDevice(this.em, input);
+  }
+
+  updateDevice(id: string, input: DeviceUpdate) {
+    return updateDevice(this.em, id, input);
+  }
+
+  deleteDevice(id: string) {
+    return deleteDevice(this.em, id);
+  }
+
+  resolveDeviceForVehicle(vehicleId: string) {
+    return resolveDeviceForVehicle(this.em, vehicleId);
+  }
+
+  resolveVehicleForDevice(deviceId: string) {
+    return resolveVehicleForDevice(this.em, deviceId);
+  }
 }

@@ -29,6 +29,12 @@ export const env = {
 
   port: port("PORT"),
 
+  frontendOrigins: process.env.FRONTEND_ORIGINS
+    ? process.env.FRONTEND_ORIGINS.split(",")
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+    : ["http://localhost:5173"],
+
   databaseUrl:
     process.env.DATABASE_URL?.trim() ||
     `postgresql://${encodeURIComponent(

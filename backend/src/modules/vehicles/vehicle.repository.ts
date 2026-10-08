@@ -50,6 +50,9 @@ export async function createVehicle(
   const now = new Date();
   const vehicle = em.create(Vehicle, {
     ...input,
+    make: input.make ?? "Unknown",
+    model: input.model ?? "Unknown",
+    year: input.year ?? new Date().getFullYear(),
     status: input.status ?? "active",
     createdAt: now,
     updatedAt: now,
@@ -75,4 +78,36 @@ export async function deleteVehicle(
 ): Promise<void> {
   em.remove(vehicle);
   await em.flush();
+}
+
+export class VehicleRepository {
+  constructor(private readonly em: EntityManager) {}
+
+  listVehicles(limit: number, offset: number): Promise<[Vehicle[], number]> {
+    return listVehicles(this.em, limit, offset);
+  }
+
+  findVehicle(id: string): Promise<Vehicle | null> {
+    return findVehicle(this.em, id);
+  }
+
+  findByPlateNumber(plateNumber: string): Promise<Vehicle | null> {
+    return findByPlateNumber(this.em, plateNumber);
+  }
+
+  existsByPlateNumber(plateNumber: string): Promise<boolean> {
+    return existsByPlateNumber(this.em, plateNumber);
+  }
+
+  createVehicle(input: VehicleInput | CreateVehicleInput): Promise<Vehicle> {
+    return createVehicle(this.em, input);
+  }
+
+  updateVehicle(vehicle: Vehicle, input: VehicleUpdate): Promise<Vehicle> {
+    return updateVehicle(this.em, vehicle, input);
+  }
+
+  deleteVehicle(vehicle: Vehicle): Promise<void> {
+    return deleteVehicle(this.em, vehicle);
+  }
 }
