@@ -1,5 +1,6 @@
 // Vehicle entity — a tracked vehicle in the fleet.
 import { EntitySchema } from "@mikro-orm/core";
+import type { VehicleStatus } from "./vehicle.types.js";
 
 export class Vehicle {
   id!: string;
@@ -7,7 +8,7 @@ export class Vehicle {
   make!: string;
   model!: string;
   year!: number;
-  status!: "active" | "inactive" | "maintenance";
+  status!: VehicleStatus;
   createdAt!: Date;
   updatedAt!: Date;
 }

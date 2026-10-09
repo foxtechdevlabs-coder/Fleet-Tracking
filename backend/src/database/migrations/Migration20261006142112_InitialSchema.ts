@@ -1,8 +1,15 @@
+// Initial Phase 1 schema (from the former 001_initial_schema.sql). Every statement uses
+// IF NOT EXISTS, so it is safe on a database that was created with the old SQL script.
+import { Migration } from "@mikro-orm/migrations";
+
+export class Migration20261006142112_InitialSchema extends Migration {
+  override name = "Migration20261006142112_InitialSchema";
+
+  override up(): void {
+    this.addSql(`
 -- Fleet Tracking System — Phase 1 initial schema
--- Run via: pnpm run db:schema:create
 -- PostgreSQL >= 14
 
-BEGIN;
 
 -- ============================================================
 -- admins
@@ -141,4 +148,15 @@ CREATE TABLE IF NOT EXISTS settings (
 
 CREATE INDEX IF NOT EXISTS idx_settings_scope ON settings(scope);
 
-COMMIT;
+-- Revoked bearer tokens are persisted so logout takes effect across workers.
+CREATE TABLE IF NOT EXISTS revoked_tokens (
+  token_id   UUID        PRIMARY KEY,
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires_at
+  ON revoked_tokens(expires_at);
+`);
+  }
+}

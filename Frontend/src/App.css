@@ -8,7 +8,8 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
+}
+a{
   --color-primary: #2563eb;
   --color-primary-hover: #1d4ed8;
   --color-text: #172b4d;
