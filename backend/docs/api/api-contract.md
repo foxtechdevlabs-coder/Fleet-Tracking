@@ -111,33 +111,83 @@ command after setting its one-time `ADMIN_EMAIL`, `ADMIN_NAME`, and
 Access tokens are signed with `JWT_SECRET` and expire after one hour; logout
 revocation is stored in PostgreSQL.
 
+## Tracking ingestion
+
+`POST /api/v1/tracking/ingest` is an authenticated normalized location endpoint.
+It requires an active administrator bearer token and accepts
+`deviceIdentifier`, `recordedAt`, `latitude`, `longitude`, with optional
+`speed`, `heading`, and `altitude`. The identifier is trimmed, matched to the
+registered `Device.identifier`, and the vehicle is resolved only from that
+Device's stored `vehicle_id`. Caller-supplied database IDs or additional
+payload fields are rejected. Unknown identifiers return `404
+DEVICE_NOT_FOUND`. An unassigned Device is rejected with `409
+DEVICE_NOT_ASSIGNED`, because `location_history.vehicle_id` is required. A
+dangling stored association returns `409
+DEVICE_VEHICLE_ASSOCIATION_INVALID`. Valid data is written to
+`location_history` and upserted into `latest_locations` in the same
+transaction. The live position is resolved exclusively from the registered
+Device's Vehicle association; no Device or Vehicle is created and no database
+schema change is required.
+
+`recordedAt` must be a valid ISO 8601 timestamp with a timezone. Latitude and
+longitude must be within [-90, 90] and [-180, 180]. Supplied speed must be
+finite and non-negative; heading must be within [0, 360]; altitude must be
+finite. Invalid input is rejected with `400 VALIDATION_ERROR` before
+persistence. Successful requests return `201` with a standard success envelope
+and the persisted location-history record. Validation and relationship errors
+occur before either table changes.
+
+Example request:
+
+```json
+{
+  "deviceIdentifier": "GPS-001",
+  "recordedAt": "2026-10-07T05:20:00.000Z",
+  "latitude": 51.5072,
+  "longitude": -0.1276,
+  "speed": 32.5,
+  "heading": 180,
+  "altitude": 15
+}
+```
+
+The existing `src/modules/tracking/location.processor.ts` remains a placeholder;
+the new endpoint service performs validation, registered-device resolution, and
+location-history persistence. Repeated ingestions with the same registered
+Device and `recordedAt` return the original record; a unique database index
+protects this idempotency key under concurrent requests. Socket.IO is not
+installed or exposed, so this flow does not emit realtime events. No vendor
+protocol or hardware-specific payload is assumed.
+
+## Location reports
+
+`GET /api/v1/reports/locations` requires an administrator bearer token and
+reads records from the existing `location_history` table. Optional `from` and
+`to` filters are inclusive ISO 8601 timestamps with a timezone. Optional
+`vehicleId` must identify an existing Vehicle, and `deviceIdentifier` must
+match a registered Device. All supplied filters are applied together at the
+database query layer. Invalid filters return `400`; unknown Vehicles or
+Devices return `404`; a valid filter set with no matching rows returns an
+empty `data` array.
+
+Each report row preserves stored valid coordinates, includes nullable
+`speed`, `heading`, and `altitude` as stored, and safely returns null for
+missing or out-of-range coordinates. Speed uses the stored km/h units and
+heading uses degrees. No values are synthesized.
+
 ## Proposed phase-one resource endpoints
 
-The modules below are grounded in the current database schema and data-flow
-outline. They are API design targets, not live routes. Payloads and
-authorization rules should be finalized as those domain modules are
+The endpoints below are design targets based on the existing schema. Payloads
+and authorization rules should be finalized as the domain modules are
 implemented.
-
-The tracking module currently has no live ingestion route or processor. When
-the existing `src/modules/tracking/location.processor.ts` integration point is
-implemented, it should resolve the incoming `identifier` through
-`tracking.service.resolveTrackingDevice` before persisting a location. The
-resolver trims the same `Device.identifier` value accepted at Device creation,
-looks up the registered Device, and resolves the Vehicle from its stored
-`devices.vehicle_id`; it does not create Devices or accept a caller-supplied
-Device/Vehicle database ID. Unknown identifiers return `404 DEVICE_NOT_FOUND`.
-An unassigned Device is rejected with `409 DEVICE_NOT_ASSIGNED`, because
-`location_history.vehicle_id` is required. A dangling stored association
-returns `409 DEVICE_VEHICLE_ASSOCIATION_INVALID`. No new endpoint or payload
-format is implemented by this resolver.
 
 | Method | Path | Purpose / initial request fields |
 | --- | --- | --- |
 | `GET` | `/api/v1/tracking/vehicles/{vehicleId}/latest` | Return the most recent known coordinates and update time. |
 | `GET` | `/api/v1/tracking/vehicles/{vehicleId}/history` | Query location history with `from`, `to`, `limit`, and `cursor`. |
-| `POST` | `/api/v1/tracking/ingest` | Accept normalized device telemetry: `deviceIdentifier`, `recordedAt`, `latitude`, `longitude`, and optional `speed`, `heading`, `altitude`. |
 | `GET`, `POST` | `/api/v1/trips` | List or create trips; creation associates a `vehicleId` and start coordinates/time. |
 | `GET`, `POST` | `/api/v1/telemetry` | Query events or ingest an event with `deviceId`, `eventType`, `recordedAt`, and `payload`. |
+| `GET` | `/api/v1/reports/locations` | Implemented location report, filtered by date range, Vehicle, and registered Device identifier. |
 | `GET` | `/api/v1/reports/trips` | Generate trip summaries, filtered by date range and optional vehicle. |
 | `GET`, `PATCH` | `/api/v1/settings` | Read and update global or per-vehicle settings. |
 

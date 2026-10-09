@@ -145,6 +145,93 @@ export const openApiSpec = swaggerJsdoc({
             },
           },
         },
+        TrackingLocationResponse: {
+          type: "object",
+          required: ["success", "message", "data"],
+          properties: {
+            success: { type: "boolean", example: true },
+            message: {
+              type: "string",
+              example: "Location recorded successfully",
+            },
+            data: {
+              type: "object",
+              required: [
+                "id",
+                "deviceId",
+                "vehicleId",
+                "latitude",
+                "longitude",
+                "recordedAt",
+                "ingestedAt",
+              ],
+              properties: {
+                id: { type: "string", format: "uuid" },
+                deviceId: { type: "string", format: "uuid" },
+                vehicleId: { type: "string", format: "uuid" },
+                latitude: { type: "number", minimum: -90, maximum: 90 },
+                longitude: { type: "number", minimum: -180, maximum: 180 },
+                speed: { type: "number", nullable: true },
+                heading: {
+                  type: "number",
+                  minimum: 0,
+                  maximum: 360,
+                  nullable: true,
+                },
+                altitude: { type: "number", nullable: true },
+                recordedAt: { type: "string", format: "date-time" },
+                ingestedAt: { type: "string", format: "date-time" },
+              },
+            },
+          },
+        },
+        LocationReportResponse: {
+          type: "object",
+          required: ["success", "message", "data"],
+          properties: {
+            success: { type: "boolean", example: true },
+            message: {
+              type: "string",
+              example: "Location report retrieved successfully",
+            },
+            data: {
+              type: "array",
+              items: {
+                type: "object",
+                required: [
+                  "recordedAt",
+                  "vehicleId",
+                  "deviceId",
+                  "latitude",
+                  "longitude",
+                  "speed",
+                  "heading",
+                  "altitude",
+                ],
+                properties: {
+                  recordedAt: { type: "string", format: "date-time" },
+                  vehicleId: { type: "string", format: "uuid" },
+                  deviceId: { type: "string", format: "uuid" },
+                  latitude: {
+                    type: "number",
+                    minimum: -90,
+                    maximum: 90,
+                    nullable: true,
+                  },
+                  longitude: {
+                    type: "number",
+                    minimum: -180,
+                    maximum: 180,
+                    nullable: true,
+                  },
+                  speed: { type: "number", nullable: true },
+                  heading: { type: "number", nullable: true },
+                  altitude: { type: "number", nullable: true },
+                },
+              },
+            },
+          },
+        },
         ApiError: {
           type: "object",
           required: ["success", "message", "code"],
@@ -200,6 +287,69 @@ export const openApiSpec = swaggerJsdoc({
           content: {
             "application/json": {
               schema: { $ref: "#/components/schemas/ApiError" },
+            },
+          },
+        },
+        TrackingDeviceNotFound: {
+          description: "No registered Device matches deviceIdentifier.",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ApiError" },
+              example: {
+                success: false,
+                message: "Registered device was not found",
+                code: "DEVICE_NOT_FOUND",
+              },
+            },
+          },
+        },
+        TrackingResourceNotFound: {
+          description:
+            "The requested Vehicle or registered Device was not found.",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ApiError" },
+              examples: {
+                vehicle: {
+                  value: {
+                    success: false,
+                    message: "Vehicle was not found",
+                    code: "VEHICLE_NOT_FOUND",
+                  },
+                },
+                device: {
+                  value: {
+                    success: false,
+                    message: "Registered device was not found",
+                    code: "DEVICE_NOT_FOUND",
+                  },
+                },
+              },
+            },
+          },
+        },
+        TrackingAssociationConflict: {
+          description:
+            "The registered device is not assigned to a valid vehicle.",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ApiError" },
+              examples: {
+                unassigned: {
+                  value: {
+                    success: false,
+                    message: "Device is not assigned to a vehicle",
+                    code: "DEVICE_NOT_ASSIGNED",
+                  },
+                },
+                invalidAssociation: {
+                  value: {
+                    success: false,
+                    message: "Device vehicle association is invalid",
+                    code: "DEVICE_VEHICLE_ASSOCIATION_INVALID",
+                  },
+                },
+              },
             },
           },
         },
