@@ -14,7 +14,8 @@ export default function App() {
           <Routes>
             {/* Dashboard / Live Tracking entry */}
             <Route path="/" element={<DashboardPage />} />
-            <Route path="/live-tracking" element={<DashboardPage />} />
+            <Route path="/live-tracking" element={<TrackingPage />} />
+            <Route path="/tracking" element={<TrackingPage />} />
             
             {/* Dedicated Vehicle Live Tracking View */}
             <Route path="/tracking/:vehicleId" element={<TrackingPage />} />
