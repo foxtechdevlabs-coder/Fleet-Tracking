@@ -2,15 +2,20 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import {
   Compass,
+  Cpu,
   Crosshair,
   Layers,
   Maximize2,
   Minus,
-  Navigation,
+  Play,
   Plus,
   Radio,
+  Satellite,
+  ShieldCheck,
+  Signal,
+  Truck,
 } from 'lucide-react';
-import type { MapViewMode, OperationalStatus } from '../../types/telemetry';
+import type { MapViewMode, OperationalStatus, Vehicle } from '../../types/telemetry';
 import { useFleet } from '../../context/FleetContext';
 import { getHeadingCompass, formatTelemetryTime } from '../tracking/TrackingDetailsPanel';
 
@@ -20,6 +25,208 @@ interface MapViewportProps {
 }
 
 const DEFAULT_CENTER: [number, number] = [12.9716, 77.5946];
+
+// ─── Floating HUD Card ──────────────────────────────────────────────────────
+interface FloatingHudCardProps {
+  vehicle: Vehicle;
+  onCenterMap: () => void;
+}
+
+const getHudStatusLabel = (status?: OperationalStatus): string => {
+  switch (status) {
+    case 'MOVING':      return 'Active Transit';
+    case 'STOPPED':     return 'Stopped';
+    case 'MAINTENANCE': return 'Maintenance';
+    case 'OFFLINE':
+    default:            return 'Offline';
+  }
+};
+
+const FloatingHudCard: React.FC<FloatingHudCardProps> = ({ vehicle, onCenterMap }) => {
+  const telemetry = vehicle.telemetry;
+  const headingInfo = getHeadingCompass(telemetry?.heading);
+  const timeInfo = formatTelemetryTime(telemetry?.recordedAt || telemetry?.ingestedAt);
+  const speed = telemetry?.speed ?? null;
+  const lat = telemetry?.latitude ?? null;
+  const lng = telemetry?.longitude ?? null;
+
+  const speedPct = speed !== null ? Math.min(100, (speed / 120) * 100) : 0;
+  const latDisplay = lat !== null && Number.isFinite(lat)
+    ? `${Math.abs(lat).toFixed(4)}° ${lat >= 0 ? 'N' : 'S'}`
+    : 'Awaiting GPS Fix';
+  const lngDisplay = lng !== null && Number.isFinite(lng)
+    ? `${Math.abs(lng).toFixed(4)}° ${lng >= 0 ? 'E' : 'W'}`
+    : 'Awaiting GPS Fix';
+  const hasCoords = lat !== null && lng !== null && Number.isFinite(lat) && Number.isFinite(lng);
+  const satCount = telemetry?.satelliteCount ?? 0;
+
+  const driverInitials = vehicle.driverName
+    ? vehicle.driverName.split(' ').map((n) => n[0] ?? '').join('').slice(0, 2).toUpperCase()
+    : 'NA';
+
+  const statusLabel = getHudStatusLabel(vehicle.operationalStatus);
+  const os = vehicle.operationalStatus as OperationalStatus | undefined;
+
+  return (
+    <div className="hud-floating-card">
+      {/* ── Header Row ───────────────────────────────────────── */}
+      <div className="hud-header-row">
+        <div className="hud-vehicle-icon">
+          <Truck size={18} />
+        </div>
+
+        <div className="hud-identity">
+          <div className="hud-id-row">
+            <span className="hud-vehicle-id">{vehicle.id}</span>
+            <span className="hud-plate-badge">{vehicle.plateNumber}</span>
+            <span className="hud-make-badge">{vehicle.make} {vehicle.model}</span>
+          </div>
+          <div className="hud-subline">
+            <span className="hud-fleet-status">
+              <ShieldCheck size={11} />
+              Fleet Active
+            </span>
+            <span className="hud-device-label">
+              <Cpu size={11} />
+              {vehicle.deviceId ? `Device ID: ${vehicle.deviceId}` : 'Device: Unregistered'}
+            </span>
+          </div>
+        </div>
+
+        <span className={`hud-op-badge hud-op-badge--${(os ?? 'OFFLINE').toLowerCase()}`}>
+          <span className="hud-op-dot" />
+          {statusLabel}
+        </span>
+      </div>
+
+      {/* ── 5-Metric Telemetry Grid ──────────────────────────── */}
+      <div className="hud-metrics-grid">
+        {/* 1. Instant Speed */}
+        <div className="hud-metric-tile">
+          <span className="hud-metric-label">INSTANT SPEED</span>
+          <strong className="hud-metric-value">
+            {speed !== null ? `${Math.round(speed)} km/h` : '-- km/h'}
+          </strong>
+          <div className="hud-speed-track" aria-label="Speed gauge">
+            <div className="hud-speed-fill" style={{ width: `${speedPct}%` }} />
+          </div>
+          <span className="hud-metric-sub">
+            {speed !== null && speed > 0 ? 'In Transit' : 'Stationary'}
+          </span>
+        </div>
+
+        {/* 2. Bearing & Vector */}
+        <div className="hud-metric-tile">
+          <span className="hud-metric-label">BEARING &amp; VECTOR</span>
+          <strong className="hud-metric-value">
+            {headingInfo.degrees !== null ? `${headingInfo.degrees}°` : '--'}
+            {headingInfo.cardinal !== '--' && (
+              <span className="hud-cardinal-tag"> {headingInfo.cardinal}</span>
+            )}
+          </strong>
+          <span className="hud-metric-sub">
+            {headingInfo.degrees !== null
+              ? `${headingInfo.degrees}° ${headingInfo.cardinalName}`
+              : 'Awaiting bearing fix'}
+          </span>
+        </div>
+
+        {/* 3. GNSS Coordinates */}
+        <div className="hud-metric-tile">
+          <span className="hud-metric-label">GNSS COORDINATES</span>
+          <strong className="hud-metric-value hud-coords-stacked">
+            <span>{latDisplay}</span>
+            <span>{lngDisplay}</span>
+          </strong>
+          <span className="hud-metric-sub">
+            <Satellite size={10} />
+            {hasCoords ? `Fix: ${satCount} Sats in view` : 'Awaiting satellite fix'}
+          </span>
+        </div>
+
+        {/* 4. Odometer & Run */}
+        <div className="hud-metric-tile">
+          <span className="hud-metric-label">ODOMETER &amp; RUN</span>
+          <strong className="hud-metric-value">
+            {telemetry?.odometerKm !== undefined
+              ? `${telemetry.odometerKm.toLocaleString()} KM`
+              : '-- KM'}
+          </strong>
+          <span className="hud-metric-sub">
+            {telemetry?.fuelPercentage !== undefined
+              ? `Fuel: ${Math.round(telemetry.fuelPercentage)}%`
+              : telemetry?.batteryVoltage !== undefined
+              ? `Aux: ${telemetry.batteryVoltage.toFixed(1)}V`
+              : 'Fuel: --'}
+          </span>
+        </div>
+
+        {/* 5. Cellular & Telemetry Ping */}
+        <div className="hud-metric-tile">
+          <span className="hud-metric-label">CELLULAR &amp; PING</span>
+          <strong className="hud-metric-value">
+            <Signal size={12} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
+            {timeInfo.relative}
+          </strong>
+          <span className="hud-metric-sub">
+            {timeInfo.absolute !== '--' ? timeInfo.absolute : 'Awaiting first ping'}
+          </span>
+        </div>
+      </div>
+
+      {/* ── Bottom Row: Driver / Hardware / Actions ──────────── */}
+      <div className="hud-bottom-row">
+        {/* Driver */}
+        <div className="hud-driver-section">
+          <div className="hud-driver-avatar">{driverInitials}</div>
+          <div className="hud-driver-info">
+            <span className="hud-driver-name">{vehicle.driverName ?? 'Driver Unassigned'}</span>
+            {vehicle.driverPhone ? (
+              <a href={`tel:${vehicle.driverPhone}`} className="hud-driver-phone">
+                {vehicle.driverPhone}
+              </a>
+            ) : (
+              <span className="hud-no-phone">No phone on record</span>
+            )}
+          </div>
+        </div>
+
+        {/* Hardware Node */}
+        <div className="hud-hardware-section">
+          <span className="hud-hw-label">
+            <Cpu size={11} />
+            Hardware Node
+          </span>
+          <span className="hud-hw-value">
+            {vehicle.deviceId ?? 'Unregistered'}
+          </span>
+          <span className="hud-hw-aux">
+            {telemetry?.batteryVoltage !== undefined
+              ? `Aux: ${telemetry.batteryVoltage.toFixed(1)}V`
+              : 'Aux: --'}
+          </span>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="hud-actions">
+          <button type="button" className="hud-action-btn" title="Send Ping">
+            📡 Send Ping
+          </button>
+          <button type="button" className="hud-action-btn" title="Center map on vehicle" onClick={onCenterMap}>
+            🎯 Center Map
+          </button>
+          <button type="button" className="hud-action-btn" title="View vehicle specs">
+            ⚙ Specs
+          </button>
+          <button type="button" className="hud-action-btn hud-action-btn--primary" title="Play route back">
+            <Play size={11} />
+            Playback Route
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const getStatusColor = (status?: OperationalStatus) => {
   switch (status) {
@@ -191,11 +398,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
   const sync = hasLiveTelemetry ? 'Update: 5s sync' : 'Awaiting Fix';
 
   const displayedVehicle = selectedVehicle ?? vehicles[0] ?? null;
-  const speedForDisplay = displayedVehicle?.telemetry?.speed ?? null;
   const headingForDisplay = displayedVehicle?.telemetry?.heading ?? null;
-  const latForDisplay = displayedVehicle?.telemetry?.latitude ?? null;
-  const lngForDisplay = displayedVehicle?.telemetry?.longitude ?? null;
-  const odometerForDisplay = displayedVehicle?.telemetry?.odometerKm ?? null;
 
   return (
     <div className="map-card">
@@ -296,83 +499,16 @@ export const MapViewport: React.FC<MapViewportProps> = ({
         )}
 
         {showFloatingTelemetryCard && displayedVehicle && (
-          <div className="telemetry-floating-card">
-            <div className="telemetry-card-header">
-              <div className="telemetry-icon-box">
-                <Navigation size={18} style={{ transform: `rotate(${headingForDisplay ?? 0}deg)` }} />
-              </div>
-              <div className="telemetry-card-heading">
-                <div className="telemetry-id-row">
-                  <span className="telemetry-id">{displayedVehicle.id}</span>
-                  <span className="telemetry-plate">{displayedVehicle.plateNumber}</span>
-                </div>
-                <div className="telemetry-model-row">
-                  <span>{displayedVehicle.make} {displayedVehicle.model} {displayedVehicle.year ? `(${displayedVehicle.year})` : ''}</span>
-                </div>
-              </div>
-              <div className="telemetry-select-btn">
-                <span className={`status-badge ${displayedVehicle.operationalStatus}`}>
-                  <span className="status-badge-dot" />
-                  {displayedVehicle.operationalStatus}
-                </span>
-              </div>
-            </div>
-
-            <div className="telemetry-grid">
-              <div className="telemetry-metric">
-                <span className="metric-label">INSTANT SPEED</span>
-                <strong>{speedForDisplay !== null ? `${Math.round(speedForDisplay)} km/h` : '-- km/h'}</strong>
-                <div className="metric-bar">
-                  <span style={{ width: `${speedForDisplay ? Math.min(100, (speedForDisplay / 120) * 100) : 0}%` }} />
-                </div>
-              </div>
-              <div className="telemetry-metric">
-                <span className="metric-label">BEARING &amp; VECTOR</span>
-                <strong>{getHeadingCompass(headingForDisplay).degrees !== null ? `${getHeadingCompass(headingForDisplay).degrees}° ${getHeadingCompass(headingForDisplay).cardinal}` : '--'}</strong>
-                <small>{getHeadingCompass(headingForDisplay).cardinal !== '--' ? `Vector ${getHeadingCompass(headingForDisplay).cardinal}` : 'Awaiting Fix'}</small>
-              </div>
-              <div className="telemetry-metric">
-                <span className="metric-label">GNSS COORDINATES</span>
-                <strong>{latForDisplay !== null && lngForDisplay !== null ? `${latForDisplay.toFixed(4)}°, ${lngForDisplay.toFixed(4)}°` : '--'}</strong>
-                <small>{latForDisplay !== null && lngForDisplay !== null ? 'Fix: Real-time GNSS' : 'Awaiting Fix'}</small>
-              </div>
-              <div className="telemetry-metric">
-                <span className="metric-label">ODOMETER</span>
-                <strong>{odometerForDisplay !== null ? `${odometerForDisplay.toLocaleString()} km` : '-- km'}</strong>
-                <small>Hardware reading</small>
-              </div>
-              <div className="telemetry-metric">
-                <span className="metric-label">LAST TELEMETRY UPDATE</span>
-                <strong>{formatTelemetryTime(displayedVehicle.telemetry?.recordedAt || displayedVehicle.telemetry?.ingestedAt).relative}</strong>
-                <small>{formatTelemetryTime(displayedVehicle.telemetry?.recordedAt || displayedVehicle.telemetry?.ingestedAt).absolute}</small>
-              </div>
-            </div>
-
-            <div className="telemetry-footer-row">
-              <div className="driver-chip">
-                <div className="driver-avatar">
-                  {displayedVehicle.driverName
-                    ? displayedVehicle.driverName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
-                    : 'NA'}
-                </div>
-                <div>
-                  <strong>{displayedVehicle.driverName ?? 'Driver Unassigned'}</strong>
-                  <span>{displayedVehicle.driverPhone ?? 'No contact phone'}</span>
-                </div>
-              </div>
-
-              <div className="hardware-chip">
-                <span>Bonded Device:</span>
-                <span>{displayedVehicle.deviceId ?? 'Unregistered'}</span>
-                {displayedVehicle.telemetry?.batteryVoltage !== undefined && (
-                  <span>Battery: {displayedVehicle.telemetry.batteryVoltage.toFixed(1)}V</span>
-                )}
-                {displayedVehicle.telemetry?.satelliteCount !== undefined && (
-                  <span>Sats: {displayedVehicle.telemetry.satelliteCount}</span>
-                )}
-              </div>
-            </div>
-          </div>
+          <FloatingHudCard
+            vehicle={displayedVehicle}
+            onCenterMap={() => {
+              const map = leafletMapRef.current;
+              const t = displayedVehicle.telemetry;
+              if (map && t && Number.isFinite(t.latitude) && Number.isFinite(t.longitude)) {
+                map.setView([t.latitude, t.longitude], 15, { animate: true });
+              }
+            }}
+          />
         )}
       </div>
 

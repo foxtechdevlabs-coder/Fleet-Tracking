@@ -35,19 +35,39 @@ export interface TrackingDetailsPanelProps {
 /**
  * Calculates compass cardinal direction from degrees (0 - 360)
  */
-export function getHeadingCompass(heading?: number | null): { degrees: number | null; cardinal: string } {
+export function getHeadingCompass(heading?: number | null): {
+  degrees: number | null;
+  cardinal: string;
+  cardinalName: string;
+} {
   if (heading === undefined || heading === null || isNaN(heading)) {
-    return { degrees: null, cardinal: '--' };
+    return { degrees: null, cardinal: '--', cardinalName: 'Awaiting Fix' };
   }
   const normalized = ((Math.round(heading) % 360) + 360) % 360;
   const directions = [
-    'N', 'NNE', 'NE', 'ENE',
-    'E', 'ESE', 'SE', 'SSE',
-    'S', 'SSW', 'SW', 'WSW',
-    'W', 'WNW', 'NW', 'NNW',
+    { abbr: 'N', name: 'North' },
+    { abbr: 'NNE', name: 'North-North-East' },
+    { abbr: 'NE', name: 'North-East' },
+    { abbr: 'ENE', name: 'East-North-East' },
+    { abbr: 'E', name: 'East' },
+    { abbr: 'ESE', name: 'East-South-East' },
+    { abbr: 'SE', name: 'South-East' },
+    { abbr: 'SSE', name: 'South-South-East' },
+    { abbr: 'S', name: 'South' },
+    { abbr: 'SSW', name: 'South-South-West' },
+    { abbr: 'SW', name: 'South-West' },
+    { abbr: 'WSW', name: 'West-South-West' },
+    { abbr: 'W', name: 'West' },
+    { abbr: 'WNW', name: 'West-North-West' },
+    { abbr: 'NW', name: 'North-West' },
+    { abbr: 'NNW', name: 'North-North-West' },
   ];
   const index = Math.round(normalized / 22.5) % 16;
-  return { degrees: normalized, cardinal: directions[index] };
+  return {
+    degrees: normalized,
+    cardinal: directions[index].abbr,
+    cardinalName: directions[index].name,
+  };
 }
 
 /**
