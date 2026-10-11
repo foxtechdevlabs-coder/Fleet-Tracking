@@ -10,6 +10,7 @@ import {
   Play,
   Plus,
   Radio,
+  RefreshCw,
   Satellite,
   ShieldCheck,
   Signal,
@@ -22,6 +23,7 @@ import { getHeadingCompass, formatTelemetryTime } from '../tracking/TrackingDeta
 interface MapViewportProps {
   onAddDeviceClick?: () => void;
   showFloatingTelemetryCard?: boolean;
+  visibleVehicleIds?: string[];
 }
 
 const DEFAULT_CENTER: [number, number] = [12.9716, 77.5946];
@@ -37,6 +39,7 @@ const getHudStatusLabel = (status?: OperationalStatus): string => {
     case 'MOVING':      return 'Active Transit';
     case 'STOPPED':     return 'Stopped';
     case 'MAINTENANCE': return 'Maintenance';
+    case 'UNKNOWN':     return 'Status unavailable';
     case 'OFFLINE':
     default:            return 'Offline';
   }
@@ -51,14 +54,13 @@ const FloatingHudCard: React.FC<FloatingHudCardProps> = ({ vehicle, onCenterMap 
   const lng = telemetry?.longitude ?? null;
 
   const speedPct = speed !== null ? Math.min(100, (speed / 120) * 100) : 0;
-  const latDisplay = lat !== null && Number.isFinite(lat)
+  const latDisplay = lat !== null && Number.isFinite(lat) && lat >= -90 && lat <= 90
     ? `${Math.abs(lat).toFixed(4)}° ${lat >= 0 ? 'N' : 'S'}`
     : 'Awaiting GPS Fix';
-  const lngDisplay = lng !== null && Number.isFinite(lng)
+  const lngDisplay = lng !== null && Number.isFinite(lng) && lng >= -180 && lng <= 180
     ? `${Math.abs(lng).toFixed(4)}° ${lng >= 0 ? 'E' : 'W'}`
     : 'Awaiting GPS Fix';
-  const hasCoords = lat !== null && lng !== null && Number.isFinite(lat) && Number.isFinite(lng);
-  const satCount = telemetry?.satelliteCount ?? 0;
+  const hasCoords = lat !== null && lng !== null && Number.isFinite(lat) && lat >= -90 && lat <= 90 && Number.isFinite(lng) && lng >= -180 && lng <= 180;
 
   const driverInitials = vehicle.driverName
     ? vehicle.driverName.split(' ').map((n) => n[0] ?? '').join('').slice(0, 2).toUpperCase()
@@ -84,16 +86,16 @@ const FloatingHudCard: React.FC<FloatingHudCardProps> = ({ vehicle, onCenterMap 
           <div className="hud-subline">
             <span className="hud-fleet-status">
               <ShieldCheck size={11} />
-              Fleet Active
+                Vehicle record
             </span>
             <span className="hud-device-label">
               <Cpu size={11} />
-              {vehicle.deviceId ? `Device ID: ${vehicle.deviceId}` : 'Device: Unregistered'}
+              {vehicle.deviceId ? `Device ID: ${vehicle.deviceId}` : 'Device details unavailable'}
             </span>
           </div>
         </div>
 
-        <span className={`hud-op-badge hud-op-badge--${(os ?? 'OFFLINE').toLowerCase()}`}>
+        <span className={`hud-op-badge hud-op-badge--${(os ?? 'UNKNOWN').toLowerCase()}`}>
           <span className="hud-op-dot" />
           {statusLabel}
         </span>
@@ -111,7 +113,7 @@ const FloatingHudCard: React.FC<FloatingHudCardProps> = ({ vehicle, onCenterMap 
             <div className="hud-speed-fill" style={{ width: `${speedPct}%` }} />
           </div>
           <span className="hud-metric-sub">
-            {speed !== null && speed > 0 ? 'In Transit' : 'Stationary'}
+            {speed === null ? 'Unavailable' : speed > 0 ? 'In Transit' : 'Stationary'}
           </span>
         </div>
 
@@ -140,7 +142,9 @@ const FloatingHudCard: React.FC<FloatingHudCardProps> = ({ vehicle, onCenterMap 
           </strong>
           <span className="hud-metric-sub">
             <Satellite size={10} />
-            {hasCoords ? `Fix: ${satCount} Sats in view` : 'Awaiting satellite fix'}
+            {hasCoords
+              ? telemetry?.satelliteCount !== undefined ? `Fix: ${telemetry.satelliteCount} Sats in view` : 'Satellite count unavailable'
+              : 'GPS coordinates unavailable'}
           </span>
         </div>
 
@@ -180,13 +184,13 @@ const FloatingHudCard: React.FC<FloatingHudCardProps> = ({ vehicle, onCenterMap 
         <div className="hud-driver-section">
           <div className="hud-driver-avatar">{driverInitials}</div>
           <div className="hud-driver-info">
-            <span className="hud-driver-name">{vehicle.driverName ?? 'Driver Unassigned'}</span>
+            <span className="hud-driver-name">{vehicle.driverName ?? 'Driver unavailable'}</span>
             {vehicle.driverPhone ? (
               <a href={`tel:${vehicle.driverPhone}`} className="hud-driver-phone">
                 {vehicle.driverPhone}
               </a>
             ) : (
-              <span className="hud-no-phone">No phone on record</span>
+              <span className="hud-no-phone">Driver contact unavailable</span>
             )}
           </div>
         </div>
@@ -246,27 +250,35 @@ const getStatusColor = (status?: OperationalStatus) => {
 export const MapViewport: React.FC<MapViewportProps> = ({
   onAddDeviceClick,
   showFloatingTelemetryCard = true,
+  visibleVehicleIds,
 }) => {
-  const { vehicles, selectedVehicleId, setSelectedVehicleId } = useFleet();
+  const { vehicles, isLoading, error, refreshTelemetry, selectedVehicleId, setSelectedVehicleId } = useFleet();
   const mapRef = useRef<HTMLDivElement | null>(null);
   const leafletMapRef = useRef<L.Map | null>(null);
   const markerLayerRef = useRef<L.LayerGroup | null>(null);
   const [mapMode, setMapMode] = useState<MapViewMode>('street');
   const [zoomLevel, setZoomLevel] = useState<number>(12);
 
+  const visibleVehicles = useMemo(
+    () => visibleVehicleIds ? vehicles.filter((vehicle) => visibleVehicleIds.includes(vehicle.id)) : vehicles,
+    [vehicles, visibleVehicleIds],
+  );
+
   const activeVehicleIds = useMemo(
     () =>
-      vehicles.filter(
+      visibleVehicles.filter(
         (vehicle) =>
           vehicle.telemetry &&
           Number.isFinite(vehicle.telemetry.latitude) &&
-          Number.isFinite(vehicle.telemetry.longitude),
+          vehicle.telemetry.latitude >= -90 && vehicle.telemetry.latitude <= 90 &&
+          Number.isFinite(vehicle.telemetry.longitude) &&
+          vehicle.telemetry.longitude >= -180 && vehicle.telemetry.longitude <= 180,
       ),
-    [vehicles],
+    [visibleVehicles],
   );
 
   const selectedVehicle =
-    vehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? activeVehicleIds[0] ?? null;
+    visibleVehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? visibleVehicles[0] ?? null;
 
   useEffect(() => {
     if (!mapRef.current || leafletMapRef.current) {
@@ -301,10 +313,10 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       return;
     }
 
-    if (!selectedVehicleId && vehicles[0]) {
-      setSelectedVehicleId(vehicles[0].id);
+    if (!selectedVehicleId && visibleVehicles[0]) {
+      setSelectedVehicleId(visibleVehicles[0].id);
     }
-  }, [selectedVehicleId, setSelectedVehicleId, vehicles]);
+  }, [selectedVehicleId, setSelectedVehicleId, visibleVehicles]);
 
   useEffect(() => {
     const map = leafletMapRef.current;
@@ -316,12 +328,14 @@ export const MapViewport: React.FC<MapViewportProps> = ({
 
     layer.clearLayers();
 
-    const validVehicles = vehicles.filter(
+    const validVehicles = visibleVehicles.filter(
       (vehicle) =>
         vehicle.telemetry &&
         Number.isFinite(vehicle.telemetry.latitude) &&
-        Number.isFinite(vehicle.telemetry.longitude),
-    );
+        vehicle.telemetry.latitude >= -90 && vehicle.telemetry.latitude <= 90 &&
+        Number.isFinite(vehicle.telemetry.longitude) &&
+        vehicle.telemetry.longitude >= -180 && vehicle.telemetry.longitude <= 180,
+      );
 
     if (validVehicles.length === 0) {
       map.setView(DEFAULT_CENTER, 11);
@@ -339,8 +353,8 @@ export const MapViewport: React.FC<MapViewportProps> = ({
     setZoomLevel(map.getZoom());
 
     validVehicles.forEach((vehicle) => {
-      const speed = vehicle.telemetry?.speed ?? 0;
-      const heading = vehicle.telemetry?.heading ?? 0;
+      const speed = vehicle.telemetry?.speed;
+      const heading = vehicle.telemetry?.heading;
       const icon = L.divIcon({
         className: 'fleet-map-pin',
         html: `
@@ -353,7 +367,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       });
 
       const marker = L.marker([vehicle.telemetry!.latitude, vehicle.telemetry!.longitude], { icon });
-      marker.bindTooltip(`${vehicle.id} • ${speed} km/h`, {
+      marker.bindTooltip(`${vehicle.id} • ${Number.isFinite(speed) ? `${speed} km/h` : 'Speed unavailable'}`, {
         direction: 'top',
         offset: [0, -14],
         opacity: 0.95,
@@ -363,20 +377,21 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       });
       marker.addTo(layer);
 
-      const rotation = Number.isFinite(heading) ? heading : 0;
-      const arrowIcon = L.divIcon({
-        className: 'fleet-map-pin-arrow',
-        html: `<span style="transform: rotate(${rotation}deg)"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 2 L13 11 L8 9 L3 11 Z" fill="${getStatusColor(vehicle.operationalStatus)}"/></svg></span>`,
-        iconSize: [18, 18],
-        iconAnchor: [9, 9],
-      });
+      if (typeof heading === 'number' && Number.isFinite(heading) && heading >= 0 && heading <= 360) {
+        const arrowIcon = L.divIcon({
+          className: 'fleet-map-pin-arrow',
+          html: `<span style="transform: rotate(${heading}deg)"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 2 L13 11 L8 9 L3 11 Z" fill="${getStatusColor(vehicle.operationalStatus)}"/></svg></span>`,
+          iconSize: [18, 18],
+          iconAnchor: [9, 9],
+        });
 
-      L.marker([vehicle.telemetry!.latitude, vehicle.telemetry!.longitude], {
-        icon: arrowIcon,
-        interactive: false,
-      }).addTo(layer);
+        L.marker([vehicle.telemetry!.latitude, vehicle.telemetry!.longitude], {
+          icon: arrowIcon,
+          interactive: false,
+        }).addTo(layer);
+      }
     });
-  }, [setSelectedVehicleId, vehicles]);
+  }, [setSelectedVehicleId, visibleVehicles]);
 
   const handleZoom = (direction: 'in' | 'out') => {
     const map = leafletMapRef.current;
@@ -392,12 +407,10 @@ export const MapViewport: React.FC<MapViewportProps> = ({
     setZoomLevel(map.getZoom());
   };
 
-  const hasLiveTelemetry = activeVehicleIds.length > 0;
-  const statusText = hasLiveTelemetry ? 'Socket.IO Connected' : 'Awaiting Live GPS Telemetry Stream';
-  const latency = hasLiveTelemetry ? '34ms' : '--';
-  const sync = hasLiveTelemetry ? 'Update: 5s sync' : 'Awaiting Fix';
-
-  const displayedVehicle = selectedVehicle ?? vehicles[0] ?? null;
+  const hasValidLocations = activeVehicleIds.length > 0;
+  const statusText = hasValidLocations ? 'GPS positions available' : 'GPS locations unavailable';
+  const sync = 'Manual refresh';
+  const displayedVehicle = selectedVehicle;
   const headingForDisplay = displayedVehicle?.telemetry?.heading ?? null;
 
   return (
@@ -405,9 +418,9 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       <div className="map-card-header">
         <div className="map-card-title">
           <Radio size={16} color="#0284c7" />
-          <span>Live Fleet Deployment Map Overview</span>
+          <span>Fleet Deployment Map Overview</span>
           {activeVehicleIds.length > 0 && (
-            <span className="badge-count stream">{activeVehicleIds.length} Active Nodes</span>
+            <span className="badge-count stream">{activeVehicleIds.length} Located Vehicles</span>
           )}
         </div>
 
@@ -436,7 +449,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
             </button>
           </div>
 
-          <button type="button" className="map-icon-btn" title="Recenter on fleet" onClick={() => { if (vehicles[0]) setSelectedVehicleId(vehicles[0].id); }}>
+          <button type="button" className="map-icon-btn" title="Recenter on fleet" onClick={() => { if (visibleVehicles[0]) setSelectedVehicleId(visibleVehicles[0].id); }}>
             <Crosshair size={15} />
           </button>
 
@@ -451,7 +464,6 @@ export const MapViewport: React.FC<MapViewportProps> = ({
 
         <div className="map-top-hud">
           <span className="map-hud-pill map-hud-live">{statusText}</span>
-          <span className="map-hud-pill">Latency: {latency}</span>
           <span className="map-hud-pill">{sync}</span>
         </div>
 
@@ -475,21 +487,43 @@ export const MapViewport: React.FC<MapViewportProps> = ({
 
         <div className="map-compass-pill">
           <Compass size={14} />
-          <span>HDG {headingForDisplay ?? 0}° | Z{zoomLevel}</span>
+          <span>HDG {headingForDisplay ?? '--'}° | Z{zoomLevel}</span>
         </div>
 
         <div ref={mapRef} className="leaflet-map-surface" aria-label="Fleet tracking map" />
 
-        {!hasLiveTelemetry && (
+        {!hasValidLocations && (
           <div className="map-empty-overlay">
             <div className="map-empty-radar-icon">
-              <Radio size={28} />
+              {isLoading && vehicles.length === 0 ? <Radio size={28} className="spin-anim" /> : <Radio size={28} />}
             </div>
-            <h2 className="map-empty-title">Awaiting Live GPS Telemetry Stream</h2>
+            <h2 className="map-empty-title">
+              {isLoading && vehicles.length === 0
+                ? 'Loading fleet data'
+                : error && vehicles.length === 0
+                  ? 'Fleet data unavailable'
+                  : visibleVehicles.length === 0 && vehicles.length > 0
+                    ? 'No assets match current filters'
+                    : vehicles.length === 0
+                      ? 'No registered vehicles'
+                      : 'GPS locations unavailable'}
+            </h2>
             <p className="map-empty-desc">
-              No live vehicle coordinates have been received yet. The map will center on the neutral corridor until telemetry becomes available.
+              {error && vehicles.length === 0
+                ? error
+                : visibleVehicles.length === 0 && vehicles.length > 0
+                  ? 'Change the search text or status filter to show assets on the map.'
+                  : vehicles.length === 0
+                    ? 'The vehicle API returned no records to locate.'
+                    : 'The available API does not currently provide vehicle coordinates.'}
             </p>
-            {onAddDeviceClick && (
+            {error && vehicles.length === 0 && (
+              <button type="button" className="btn-primary" onClick={() => void refreshTelemetry()}>
+                <RefreshCw size={15} />
+                <span>Retry</span>
+              </button>
+            )}
+            {!error && onAddDeviceClick && (
               <button type="button" className="btn-primary" onClick={onAddDeviceClick}>
                 <Plus size={15} />
                 <span>Connect Device &amp; Vehicle</span>
@@ -504,7 +538,11 @@ export const MapViewport: React.FC<MapViewportProps> = ({
             onCenterMap={() => {
               const map = leafletMapRef.current;
               const t = displayedVehicle.telemetry;
-              if (map && t && Number.isFinite(t.latitude) && Number.isFinite(t.longitude)) {
+              if (
+                map && t &&
+                Number.isFinite(t.latitude) && t.latitude >= -90 && t.latitude <= 90 &&
+                Number.isFinite(t.longitude) && t.longitude >= -180 && t.longitude <= 180
+              ) {
                 map.setView([t.latitude, t.longitude], 15, { animate: true });
               }
             }}
@@ -518,7 +556,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
           <div className="legend-item"><span className="legend-dot stopped" />Stopped</div>
           <div className="legend-item"><span className="legend-dot offline" />Offline</div>
         </div>
-        <div className="map-attribution">EPSG:3857 • WGS84 GPS Telemetry Feed • Refresh: 1000ms</div>
+        <div className="map-attribution">EPSG:3857 • WGS84 coordinates when provided by the API</div>
       </div>
     </div>
   );

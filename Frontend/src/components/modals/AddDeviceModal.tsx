@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import { X, Plus, Radio, Cpu } from 'lucide-react';
-import type { OperationalStatus } from '../../types/telemetry';
-import { useFleet } from '../../context/FleetContext';
 
 interface AddDeviceModalProps {
   isOpen: boolean;
@@ -9,41 +7,18 @@ interface AddDeviceModalProps {
 }
 
 export const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ isOpen, onClose }) => {
-  const { addVehicle } = useFleet();
-
-  const [vehicleId, setVehicleId] = useState('');
   const [plateNumber, setPlateNumber] = useState('');
-  const [make, setMake] = useState('Tata');
-  const [model, setModel] = useState('Prima 4928.S');
-  const [driverName, setDriverName] = useState('');
-  const [driverPhone, setDriverPhone] = useState('');
+  const [make, setMake] = useState('');
+  const [model, setModel] = useState('');
+  const [year, setYear] = useState(String(new Date().getFullYear()));
   const [deviceId, setDeviceId] = useState('');
-  const [operationalStatus, setOperationalStatus] = useState<OperationalStatus>('MOVING');
+  const [registrationError, setRegistrationError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!plateNumber.trim()) return;
-
-    addVehicle({
-      id: vehicleId.trim() || undefined,
-      plateNumber: plateNumber.trim().toUpperCase(),
-      make,
-      model,
-      driverName: driverName.trim() || 'Unassigned',
-      driverPhone: driverPhone.trim() || undefined,
-      deviceId: deviceId.trim() || `DEV-${Math.floor(100000 + Math.random() * 900000)}`,
-      operationalStatus,
-    });
-
-    onClose();
-    // Reset form
-    setVehicleId('');
-    setPlateNumber('');
-    setDriverName('');
-    setDriverPhone('');
-    setDeviceId('');
+    setRegistrationError('Registration requires administrator sign-in, which is not available in this frontend. No vehicle or device was created.');
   };
 
   return (
@@ -64,30 +39,20 @@ export const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ isOpen, onClose 
             <div style={{
               padding: '10px 14px',
               borderRadius: '8px',
-              background: '#f0fdf4',
-              border: '1px solid #bbf7d0',
+              background: '#fff7ed',
+              border: '1px solid #fed7aa',
               fontSize: '0.78rem',
-              color: '#166534',
+              color: '#9a3412',
               display: 'flex',
               alignItems: 'center',
               gap: '8px'
             }}>
-              <Radio size={16} color="#16a34a" />
-              <span>Bonds an active GPS telemetry unit to an operational fleet chassis.</span>
+              <Radio size={16} color="#c2410c" />
+              <span>Administrator sign-in is required by the registration API. This form will not create local or simulated records.</span>
             </div>
+            {registrationError && <p role="alert" style={{ color: '#b91c1c' }}>{registrationError}</p>}
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div className="form-group">
-                <label className="form-label">Vehicle ID (Optional)</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. VH-001"
-                  value={vehicleId}
-                  onChange={(e) => setVehicleId(e.target.value)}
-                />
-              </div>
-
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
               <div className="form-group">
                 <label className="form-label">Registration Plate *</label>
                 <input
@@ -103,9 +68,10 @@ export const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ isOpen, onClose 
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div className="form-group">
-                <label className="form-label">Vehicle Make</label>
+                <label className="form-label">Vehicle Make *</label>
                 <input
                   type="text"
+                  required
                   className="form-input"
                   placeholder="e.g. Tata, Ashok Leyland"
                   value={make}
@@ -114,9 +80,10 @@ export const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ isOpen, onClose 
               </div>
 
               <div className="form-group">
-                <label className="form-label">Model / Series</label>
+                <label className="form-label">Model / Series *</label>
                 <input
                   type="text"
+                  required
                   className="form-input"
                   placeholder="e.g. Prima 4928.S"
                   value={model}
@@ -125,54 +92,30 @@ export const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ isOpen, onClose 
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div className="form-group">
-                <label className="form-label">Driver In Charge</label>
+                <label className="form-label">Model Year *</label>
                 <input
-                  type="text"
+                  type="number"
+                  required
                   className="form-input"
-                  placeholder="e.g. Rajesh Kumar"
-                  value={driverName}
-                  onChange={(e) => setDriverName(e.target.value)}
+                  min="1900"
+                  max="2100"
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
                 />
               </div>
 
               <div className="form-group">
-                <label className="form-label">Driver Phone</label>
-                <input
-                  type="tel"
-                  className="form-input"
-                  placeholder="e.g. +91 98401 23456"
-                  value={driverPhone}
-                  onChange={(e) => setDriverPhone(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '12px' }}>
-              <div className="form-group">
-                <label className="form-label">GPS Device IMEI / ID</label>
+                <label className="form-label">GPS Device IMEI / ID *</label>
                 <input
                   type="text"
+                  required
                   className="form-input"
                   placeholder="e.g. DEV-490218"
                   value={deviceId}
                   onChange={(e) => setDeviceId(e.target.value)}
                 />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Initial Status</label>
-                <select
-                  className="form-input"
-                  value={operationalStatus}
-                  onChange={(e) => setOperationalStatus(e.target.value as OperationalStatus)}
-                >
-                  <option value="MOVING">MOVING</option>
-                  <option value="STOPPED">STOPPED</option>
-                  <option value="OFFLINE">OFFLINE</option>
-                  <option value="MAINTENANCE">MAINTENANCE</option>
-                </select>
               </div>
             </div>
           </div>
@@ -183,7 +126,7 @@ export const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ isOpen, onClose 
             </button>
             <button type="submit" className="btn-primary">
               <Plus size={16} />
-              <span>Bond & Activate Telemetry</span>
+              <span>Register Vehicle &amp; Device</span>
             </button>
           </div>
         </form>

@@ -17,7 +17,15 @@ const statusOptions = ['ALL', 'MOVING', 'STOPPED', 'OFFLINE'] as const;
 type StatusFilter = (typeof statusOptions)[number];
 
 export const LiveTrackingView: React.FC = () => {
-  const { vehicles, selectedVehicleId, setSelectedVehicleId } = useFleet();
+  const {
+    vehicles,
+    isLoading,
+    isRefreshing,
+    error,
+    refreshTelemetry,
+    selectedVehicleId,
+    setSelectedVehicleId,
+  } = useFleet();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [isDetailsOpen, setIsDetailsOpen] = useState(true);
@@ -34,7 +42,13 @@ export const LiveTrackingView: React.FC = () => {
   }, [searchQuery, statusFilter, vehicles]);
 
   const selectedVehicle =
-    vehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? filteredVehicles[0] ?? vehicles[0] ?? null;
+    filteredVehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? filteredVehicles[0] ?? null;
+
+  React.useEffect(() => {
+    if (filteredVehicles.length > 0 && !filteredVehicles.some((vehicle) => vehicle.id === selectedVehicleId)) {
+      setSelectedVehicleId(filteredVehicles[0].id);
+    }
+  }, [filteredVehicles, selectedVehicleId, setSelectedVehicleId]);
 
   return (
     <div className={`live-tracking-shell ${isDetailsOpen ? 'with-details' : ''}`}>
@@ -54,8 +68,15 @@ export const LiveTrackingView: React.FC = () => {
             >
               <SlidersHorizontal size={15} />
             </button>
-            <button type="button" className="icon-button" aria-label="Refresh asset matrix">
-              <RefreshCw size={15} />
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Refresh asset matrix"
+              title="Refresh asset matrix"
+              onClick={() => void refreshTelemetry()}
+              disabled={isRefreshing}
+            >
+              <RefreshCw size={15} className={isRefreshing ? 'spin-anim' : ''} />
             </button>
           </div>
         </div>
@@ -97,11 +118,32 @@ export const LiveTrackingView: React.FC = () => {
         </div>
 
         <div className="matrix-list">
-          {filteredVehicles.length === 0 ? (
+          {isLoading && vehicles.length === 0 ? (
+            <div className="matrix-empty-state" role="status">
+              <RefreshCw size={24} className="spin-anim" />
+              <h3>Loading fleet data</h3>
+              <p>Retrieving registered vehicle records from the FleetTrack API.</p>
+            </div>
+          ) : error && vehicles.length === 0 ? (
+            <div className="matrix-empty-state" role="alert">
+              <MapPinned size={28} color="#94a3b8" />
+              <h3>Fleet data unavailable</h3>
+              <p>{error}</p>
+              <button type="button" className="btn-secondary" onClick={() => void refreshTelemetry()} disabled={isRefreshing}>
+                Retry
+              </button>
+            </div>
+          ) : vehicles.length === 0 ? (
+            <div className="matrix-empty-state">
+              <MapPinned size={28} color="#94a3b8" />
+              <h3>No registered vehicles</h3>
+              <p>The FleetTrack API returned no vehicle records.</p>
+            </div>
+          ) : filteredVehicles.length === 0 ? (
             <div className="matrix-empty-state">
               <MapPinned size={28} color="#94a3b8" />
               <h3>No matching assets</h3>
-              <p>Awaiting live telemetry. Vehicle information will appear here when the stream is active.</p>
+              <p>Try changing the search text or status filter.</p>
             </div>
           ) : (
             filteredVehicles.map((vehicle) => {
@@ -137,7 +179,7 @@ export const LiveTrackingView: React.FC = () => {
                   <div className="matrix-card-body">
                     <span className="matrix-model">{vehicle.model || 'Awaiting vehicle type'}</span>
                     <div className="matrix-metadata-row">
-                      <span>{hasTelemetry ? `Heading ${vehicle.telemetry?.heading ?? 0}°` : 'Awaiting Fix'}</span>
+                      <span>{vehicle.telemetry?.heading !== undefined ? `Heading ${vehicle.telemetry.heading}°` : 'Heading unavailable'}</span>
                       <span>
                         {hasTelemetry && vehicle.telemetry?.batteryVoltage !== undefined
                           ? `${vehicle.telemetry.batteryVoltage.toFixed(0)}V Aux`
@@ -165,21 +207,21 @@ export const LiveTrackingView: React.FC = () => {
 
         <div className="matrix-footer">
           <div className="health-pill">
-            <span>Fleet Health: {vehicles.length ? '96%' : '--%'}</span>
+            <span>Fleet Health: --</span>
           </div>
           <div className="health-pill subtle">
-            <Wifi size={12} /> Auto-sync 5s
+            <Wifi size={12} /> Manual refresh
           </div>
           <div className="health-pill subtle">
-            <ShieldCheck size={12} /> Nodes Online {vehicles.filter((v) => v.operationalStatus !== 'OFFLINE').length}
+            <ShieldCheck size={12} /> Status unknown {vehicles.filter((v) => v.operationalStatus === 'UNKNOWN').length}
           </div>
         </div>
       </aside>
 
       <div className="tracking-map-panel">
         <MapViewport
-          onAddDeviceClick={() => undefined}
           showFloatingTelemetryCard={!isDetailsOpen}
+          visibleVehicleIds={filteredVehicles.map((vehicle) => vehicle.id)}
         />
       </div>
 

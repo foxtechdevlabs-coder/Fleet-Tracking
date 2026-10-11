@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import type { Vehicle, AlertItem, TelemetryEventItem, FleetSummaryMetrics, OperationalStatus } from '../types/telemetry';
-import { fetchVehicles, fetchCriticalAlerts, fetchTelemetryEvents, computeFleetMetrics } from '../services/telemetryApi';
+import { fetchVehicles, computeFleetMetrics } from '../services/telemetryApi';
 
 interface FleetContextType {
   vehicles: Vehicle[];
@@ -15,7 +15,6 @@ interface FleetContextType {
   statusFilter: OperationalStatus | 'ALL';
   setStatusFilter: (status: OperationalStatus | 'ALL') => void;
   refreshTelemetry: () => Promise<void>;
-  addVehicle: (vehicleData: Partial<Vehicle> & { plateNumber: string; make: string; model: string }) => Vehicle;
   selectedVehicleId: string | null;
   setSelectedVehicleId: (id: string | null) => void;
   lastIngestionTime: Date;
@@ -30,8 +29,8 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // CRITICAL CONSTRAINT: Start with empty state — no dummy mock array hardcoded
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
-  const [events, setEvents] = useState<TelemetryEventItem[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [events] = useState<TelemetryEventItem[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -50,21 +49,11 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setError(null);
 
     try {
-      const [fetchedVehicles, fetchedAlerts, fetchedEvents] = await Promise.all([
-        fetchVehicles(),
-        fetchCriticalAlerts(),
-        fetchTelemetryEvents(),
-      ]);
-
-      // If backend returned vehicles, update; otherwise remains empty list
-      if (fetchedVehicles.length > 0) {
-        setVehicles(fetchedVehicles);
-      }
-      setAlerts(fetchedAlerts);
-      setEvents(fetchedEvents);
+      const fetchedVehicles = await fetchVehicles();
+      setVehicles(fetchedVehicles);
       setLastIngestionTime(new Date());
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch telemetry feed');
+      setError(err instanceof Error ? err.message : 'Failed to fetch vehicle records.');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -78,54 +67,6 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const refreshTelemetry = useCallback(async () => {
     await loadFleetData(true);
   }, [loadFleetData]);
-
-  // Ability for operators to bond / register a new device & vehicle on the fly
-  const addVehicle = useCallback((data: Partial<Vehicle> & { plateNumber: string; make: string; model: string }): Vehicle => {
-    const newId = data.id || `VH-${String(vehicles.length + 1).padStart(3, '0')}`;
-    const newVehicle: Vehicle = {
-      id: newId,
-      plateNumber: data.plateNumber.toUpperCase(),
-      make: data.make,
-      model: data.model,
-      year: data.year || new Date().getFullYear(),
-      driverName: data.driverName || 'Unassigned',
-      driverPhone: data.driverPhone,
-      deviceId: data.deviceId || `DEV-${Math.floor(100000 + Math.random() * 900000)}`,
-      status: 'active',
-      operationalStatus: data.operationalStatus || 'MOVING',
-      telemetry: {
-        latitude: 12.9716 + (Math.random() - 0.5) * 0.05,
-        longitude: 77.5946 + (Math.random() - 0.5) * 0.05,
-        speed: data.operationalStatus === 'STOPPED' ? 0 : 45,
-        heading: 90,
-        ignition: data.operationalStatus !== 'OFFLINE',
-        batteryVoltage: 13.8,
-        fuelPercentage: 82,
-        odometerKm: 14250,
-        recordedAt: new Date().toISOString(),
-        ingestedAt: new Date().toISOString(),
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    setVehicles(prev => [newVehicle, ...prev]);
-
-    // Also register an ingestion event
-    const eventItem: TelemetryEventItem = {
-      id: `EV-${Date.now()}`,
-      vehicleId: newId,
-      deviceId: newVehicle.deviceId,
-      eventType: 'device_bonded',
-      summary: `Bonded new GPS unit ${newVehicle.deviceId} to ${newVehicle.plateNumber}`,
-      recordedAt: new Date().toISOString(),
-      ingestedAt: new Date().toISOString(),
-    };
-    setEvents(prev => [eventItem, ...prev]);
-    setLastIngestionTime(new Date());
-
-    return newVehicle;
-  }, [vehicles.length]);
 
   const triggerEmergencyBroadcast = useCallback((message: string) => {
     setEmergencyBroadcasts(prev => [message, ...prev]);
@@ -162,7 +103,6 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     statusFilter,
     setStatusFilter,
     refreshTelemetry,
-    addVehicle,
     selectedVehicleId,
     setSelectedVehicleId,
     lastIngestionTime,

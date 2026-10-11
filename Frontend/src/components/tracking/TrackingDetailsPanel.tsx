@@ -40,7 +40,7 @@ export function getHeadingCompass(heading?: number | null): {
   cardinal: string;
   cardinalName: string;
 } {
-  if (heading === undefined || heading === null || isNaN(heading)) {
+  if (heading === undefined || heading === null || !Number.isFinite(heading) || heading < 0 || heading > 360) {
     return { degrees: null, cardinal: '--', cardinalName: 'Awaiting Fix' };
   }
   const normalized = ((Math.round(heading) % 360) + 360) % 360;
@@ -78,8 +78,8 @@ export function formatCoordinates(lat?: number | null, lng?: number | null): {
   lngDisplay: string;
   hasCoordinates: boolean;
 } {
-  const hasLat = lat !== undefined && lat !== null && Number.isFinite(lat);
-  const hasLng = lng !== undefined && lng !== null && Number.isFinite(lng);
+  const hasLat = lat !== undefined && lat !== null && Number.isFinite(lat) && lat >= -90 && lat <= 90;
+  const hasLng = lng !== undefined && lng !== null && Number.isFinite(lng) && lng >= -180 && lng <= 180;
 
   if (!hasLat || !hasLng) {
     return {
@@ -107,7 +107,7 @@ export function formatSpeed(speed?: number | null): {
   isMoving: boolean;
   numericSpeed: number;
 } {
-  if (speed === undefined || speed === null || isNaN(speed)) {
+  if (speed === undefined || speed === null || !Number.isFinite(speed)) {
     return { speedDisplay: '-- km/h', isMoving: false, numericSpeed: 0 };
   }
   const rounded = Math.max(0, Math.round(speed));
@@ -167,6 +167,8 @@ export function getStatusStyle(status?: OperationalStatus) {
       return { label: 'Stopped', badgeClass: 'stopped', dotClass: 'stopped' };
     case 'MAINTENANCE':
       return { label: 'Maintenance', badgeClass: 'maintenance', dotClass: 'maintenance' };
+    case 'UNKNOWN':
+      return { label: 'Status unavailable', badgeClass: 'offline', dotClass: 'offline' };
     case 'OFFLINE':
     default:
       return { label: 'Offline', badgeClass: 'offline', dotClass: 'offline' };
@@ -178,7 +180,7 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
   onClose,
   className = '',
 }) => {
-  const { vehicles, selectedVehicleId } = useFleet();
+  const { vehicles, selectedVehicleId, isLoading, error, isRefreshing, refreshTelemetry } = useFleet();
   const [copiedCoords, setCopiedCoords] = useState(false);
   const [copiedDeviceId, setCopiedDeviceId] = useState(false);
 
@@ -196,10 +198,15 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
       <aside className={`tracking-details-panel empty-state-panel ${className}`} aria-label="Tracking Details">
         <div className="tracking-details-empty">
           <div className="empty-icon-wrap">
-            <Radio size={32} color="#94a3b8" />
+            {isLoading ? <Radio size={32} color="#94a3b8" className="spin-anim" /> : <Radio size={32} color="#94a3b8" />}
           </div>
-          <h3>No Vehicle Selected</h3>
-          <p>Select an asset from the fleet list or map to view real-time tracking details, coordinates, and telemetry.</p>
+          <h3>{isLoading ? 'Loading tracking data' : error ? 'Tracking data unavailable' : 'No vehicle selected'}</h3>
+          <p>{error || (isLoading ? 'Retrieving registered vehicle records.' : 'Select an asset from the fleet list or map to view available details.')}</p>
+          {error && (
+            <button type="button" className="btn-secondary" onClick={() => void refreshTelemetry()} disabled={isRefreshing}>
+              Retry
+            </button>
+          )}
         </div>
       </aside>
     );
@@ -210,7 +217,7 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
   const speedInfo = formatSpeed(telemetry?.speed);
   const headingInfo = getHeadingCompass(telemetry?.heading);
   const coordInfo = formatCoordinates(telemetry?.latitude, telemetry?.longitude);
-  const lastUpdated = formatTelemetryTime(telemetry?.recordedAt || telemetry?.ingestedAt || activeVehicle.updatedAt);
+  const lastUpdated = formatTelemetryTime(telemetry?.recordedAt || telemetry?.ingestedAt);
   const hasTelemetry = coordInfo.hasCoordinates;
 
   const handleCopyCoords = () => {
@@ -270,7 +277,7 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
         <div className="stream-indicator">
           {hasTelemetry ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
           <span>
-            {hasTelemetry ? 'Live GNSS Fix Acquired' : 'Awaiting GPS Fix — Signal Pending'}
+            {hasTelemetry ? 'GPS coordinates available' : 'GPS location unavailable'}
           </span>
         </div>
         <div className="stream-timestamp">
@@ -281,10 +288,10 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
 
       <div className="tracking-details-scrollable">
         {/* 3. Primary Telemetry Metrics Grid (Speed, Heading, Coordinates, Last Updated) */}
-        <section className="details-section" aria-label="Live Telemetry">
+        <section className="details-section" aria-label="Vehicle Telemetry">
           <div className="section-title-row">
             <Activity size={14} />
-            <h4>Live Coordinates &amp; Dynamics</h4>
+            <h4>Latest Coordinates &amp; Dynamics</h4>
           </div>
 
           <div className="telemetry-hud-grid">
@@ -304,7 +311,7 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
                 />
               </div>
               <span className="metric-subtext">
-                {speedInfo.isMoving ? 'In Transit' : 'Stationary'}
+                {telemetry?.speed == null ? 'Unavailable' : speedInfo.isMoving ? 'In Transit' : 'Stationary'}
               </span>
             </div>
 
@@ -430,7 +437,7 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
               <span className="kv-val">
                 <span className="driver-display">
                   <User size={13} />
-                  <span>{activeVehicle.driverName || 'Driver Unassigned'}</span>
+                  <span>{activeVehicle.driverName || 'Driver unavailable'}</span>
                 </span>
               </span>
             </div>
@@ -448,7 +455,7 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
                     <span>{activeVehicle.driverPhone}</span>
                   </a>
                 ) : (
-                  <span className="text-muted-fallback">No phone on record</span>
+                  <span className="text-muted-fallback">Driver contact unavailable</span>
                 )}
               </span>
             </div>

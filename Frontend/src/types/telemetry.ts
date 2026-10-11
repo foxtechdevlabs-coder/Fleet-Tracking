@@ -1,7 +1,7 @@
 // Enterprise Telematics & Fleet Tracking Types
 // Aligned with FleetTrack Phase 1 Architecture
 
-export type OperationalStatus = 'MOVING' | 'STOPPED' | 'OFFLINE' | 'MAINTENANCE';
+export type OperationalStatus = 'MOVING' | 'STOPPED' | 'OFFLINE' | 'MAINTENANCE' | 'UNKNOWN';
 
 export type VehicleStatus = 'active' | 'inactive' | 'maintenance';
 
