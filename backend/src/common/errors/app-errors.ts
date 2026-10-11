@@ -2,6 +2,24 @@
 import { AppError } from "./app-error.js";
 
 /**
+ * Thrown when input data is missing or invalid at the service layer,
+ * before any DB operation is attempted.
+ *
+ * Extends AppError so the global error handler serialises it via
+ * `error.status` (422) and `error.code` ("VALIDATION_ERROR").
+ */
+export class ValidationError extends AppError {
+  /** The name of the field that failed validation. */
+  public readonly field: string;
+
+  constructor(field: string, message: string) {
+    super(422, "VALIDATION_ERROR", message);
+    this.name = "ValidationError";
+    this.field = field;
+  }
+}
+
+/**
  * Thrown when an operation would violate a uniqueness constraint
  * (e.g. duplicate plate number, duplicate device identifier).
  */
