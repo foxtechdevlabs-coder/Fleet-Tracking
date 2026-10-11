@@ -26,12 +26,19 @@ export function findVehicle(
   return em.findOne(Vehicle, { id });
 }
 
-/** Find a vehicle by its unique plate number. */
-export function findByPlateNumber(
+export function findVehicleByPlateNumber(
   em: EntityManager,
   plateNumber: string,
 ): Promise<Vehicle | null> {
   return em.findOne(Vehicle, { plateNumber });
+}
+
+/** Alias for findVehicleByPlateNumber — used by VehicleRepository. */
+export function findByPlateNumber(
+  em: EntityManager,
+  plateNumber: string,
+): Promise<Vehicle | null> {
+  return findVehicleByPlateNumber(em, plateNumber);
 }
 
 /** Check whether a vehicle with the given plate number already exists. */

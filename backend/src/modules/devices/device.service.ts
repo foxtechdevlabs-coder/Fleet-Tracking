@@ -36,48 +36,21 @@ async function validateVehicle(
   }
 }
 
-/**
- * Create a device after enforcing uniqueness and relationship integrity.
- *
- * Accepts both legacy DeviceInput and the newer CreateDeviceInput.
- *
- * Checks performed (application-level; DB constraints are the final safeguard):
- *  1. identifier must be unique.
- *  2. If vehicleId is provided, the vehicle must exist.
- *  3. If vehicleId is provided, no other device may already be linked to it.
- */
-export async function createDevice(
+async function ensureIdentifierAvailable(
   em: EntityManager,
-  input: DeviceInput | CreateDeviceInput,
-) {
-  // 1. Identifier uniqueness
-  if (await repository.existsByIdentifier(em, input.identifier)) {
+  identifier: string,
+): Promise<void> {
+  if (await repository.existsByIdentifier(em, identifier)) {
     throw new ConflictError(
-      "A device with this identifier already exists",
-      "DEVICE_IDENTIFIER_EXISTS",
+      `A device with identifier '${identifier}' already exists`,
+      "DEVICE_IDENTIFIER_CONFLICT",
     );
   }
+}
 
-  // 2. Vehicle existence
-  if (input.vehicleId) {
-    const vehicle = await em.findOne(Vehicle, { id: input.vehicleId });
-    if (!vehicle) {
-      throw new NotFoundError(
-        "Assigned vehicle was not found",
-        "VEHICLE_NOT_FOUND",
-      );
-    }
-
-    // 3. Vehicle already linked to another device
-    const existing = await repository.findByVehicleId(em, input.vehicleId);
-    if (existing) {
-      throw new ConflictError(
-        "This vehicle is already linked to another device",
-        "VEHICLE_ALREADY_LINKED",
-      );
-    }
-  }
-
+export async function createDevice(em: EntityManager, input: DeviceInput) {
+  await ensureIdentifierAvailable(em, input.identifier);
+  await validateVehicle(em, input.vehicleId);
   return repository.createDevice(em, input);
 }
 

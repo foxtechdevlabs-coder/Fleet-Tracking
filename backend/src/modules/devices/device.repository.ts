@@ -48,15 +48,22 @@ export function findDevice(
   return em.findOne(Device, { id });
 }
 
-/** Find a device by its unique identifier (IMEI / serial). */
-export function findByIdentifier(
+export function findDeviceByIdentifier(
   em: EntityManager,
   identifier: string,
 ): Promise<Device | null> {
   return em.findOne(Device, { identifier });
 }
 
-/** Find the device currently linked to the given vehicle, if any. */
+/** Alias for findDeviceByIdentifier — used by DeviceRepository and tracking-resolver. */
+export function findByIdentifier(
+  em: EntityManager,
+  identifier: string,
+): Promise<Device | null> {
+  return findDeviceByIdentifier(em, identifier);
+}
+
+/** Find the device currently assigned to the given vehicle. */
 export function findByVehicleId(
   em: EntityManager,
   vehicleId: string,

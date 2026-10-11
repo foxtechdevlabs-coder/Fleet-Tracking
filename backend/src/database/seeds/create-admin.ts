@@ -33,30 +33,30 @@ async function createAdmin(): Promise<void> {
 
   const orm = await MikroORM.init(mikroOrmConfig);
   try {
-   await orm.connect();
+    await orm.connect();
 
-const em = orm.em.fork();
+    const em = orm.em.fork();
 
-const existing = await em.findOne(Admin, { email });
+    const existing = await em.findOne(Admin, { email });
 
-if (existing) {
-  throw new Error("An administrator with ADMIN_EMAIL already exists");
-}
+    if (existing) {
+      throw new Error("An administrator with ADMIN_EMAIL already exists");
+    }
 
-const now = new Date();
+    const now = new Date();
 
-const admin = em.create(Admin, {
-  email,
-  name,
-  role,
-  passwordHash: await hashPassword(password),
-  isActive: true,
-  createdAt: now,
-  updatedAt: now,
-});
+    const admin = em.create(Admin, {
+      email,
+      name,
+      role,
+      passwordHash: await hashPassword(password),
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
 
-em.persist(admin);
-await em.flush();
+    em.persist(admin);
+    await em.flush();
     console.log(`Administrator ${email} created with role ${role}.`);
   } finally {
     await orm.close(true);

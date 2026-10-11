@@ -1,7 +1,5 @@
 // Protected vehicle API routes.
-import type { ErrorRequestHandler } from "express";
 import { Router } from "express";
-import { AppError } from "../../common/errors/app-error.js";
 import { requireAdmin } from "../../common/middleware/auth.middleware.js";
 import {
   create,
@@ -48,6 +46,7 @@ export const vehicleRoutes = Router();
  *           schema:
  *             type: object
  *             required: [plateNumber, make, model, year]
+ *             additionalProperties: false
  *             properties:
  *               plateNumber: { type: string, maxLength: 20 }
  *               make: { type: string, maxLength: 100 }
@@ -60,6 +59,10 @@ export const vehicleRoutes = Router();
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/VehicleResponse' }
+ *             example:
+ *               success: true
+ *               message: Vehicle created successfully
+ *               data: {}
  *       400: { $ref: '#/components/responses/BadRequest' }
  *       401: { $ref: '#/components/responses/Unauthorized' }
  *       409: { $ref: '#/components/responses/Conflict' }
@@ -107,6 +110,7 @@ vehicleRoutes.post("/", create);
  *           schema:
  *             type: object
  *             required: [plateNumber, make, model, year]
+ *             additionalProperties: false
  *             properties:
  *               plateNumber: { type: string, minLength: 1, maxLength: 20 }
  *               make: { type: string, minLength: 1, maxLength: 100 }
@@ -170,40 +174,3 @@ vehicleRoutes.get("/:id", getById);
 vehicleRoutes.put("/:id", replace);
 vehicleRoutes.patch("/:id", update);
 vehicleRoutes.delete("/:id", remove);
-
-const vehicleErrorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
-  if (error instanceof AppError) {
-    res.status(error.status).json({
-      success: false,
-      message: error.message,
-      code: error.code,
-    });
-    return;
-  }
-
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "23505"
-  ) {
-    res.status(409).json({
-      success: false,
-      message: "A vehicle with this plate number already exists",
-      code: "PLATE_NUMBER_EXISTS",
-    });
-    return;
-  }
-
-  console.error(
-    "Unhandled vehicle API error:",
-    error instanceof Error ? error.name : "UnknownError",
-  );
-  res.status(500).json({
-    success: false,
-    message: "An unexpected server error occurred",
-    code: "INTERNAL_SERVER_ERROR",
-  });
-};
-
-vehicleRoutes.use(vehicleErrorHandler);

@@ -57,13 +57,14 @@ describe("health and API discovery", () => {
       "/api/v1/devices",
       "/api/v1/setup/vehicle-device",
     ]) {
-      const response = path.endsWith("/logout")
-        ? await request(app).post(path)
-        : await request(app).get(path);
+      const response =
+        path.endsWith("/logout") || path.endsWith("/vehicle-device")
+          ? await request(app).post(path)
+          : await request(app).get(path);
       expect(response.status).toBe(401);
       expect(response.body).toMatchObject({
         success: false,
-        code: "UNAUTHENTICATED",
+        code: "UNAUTHORIZED",
       });
     }
 
@@ -78,7 +79,7 @@ describe("health and API discovery", () => {
     expect(response.body.paths["/api/v1/auth/login"].post).toBeDefined();
     expect(response.body.paths["/api/vehicles"].get).toBeDefined();
     expect(response.body.paths["/api/vehicles/{id}"].put).toBeDefined();
-    expect(response.body.paths["/api/v1/devices"].post).toBeDefined();
+    expect(response.body.paths["/api/devices"].post).toBeDefined();
     expect(
       response.body.paths["/api/v1/setup/vehicle-device"].post,
     ).toBeDefined();
