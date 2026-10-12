@@ -2,7 +2,6 @@
 import type { EntityManager } from "@mikro-orm/postgresql";
 import { Device } from "../devices/device.entity.js";
 import { Vehicle } from "../vehicles/vehicle.entity.js";
-import { LatestLocation } from "./latest-location.entity.js";
 import { LocationHistory } from "./location.entity.js";
 import type { CreateTrackingLocationInput } from "./tracking.types.js";
 
@@ -49,17 +48,26 @@ export async function upsertLatestLocation(
   em: EntityManager,
   input: CreateTrackingLocationInput,
   vehicleId: string,
-): Promise<LatestLocation> {
-  return em.upsert(
-    LatestLocation,
-    {
+): Promise<void> {
+  await em.getConnection().execute(
+    `INSERT INTO "latest_locations"
+      ("vehicle_id", "latitude", "longitude", "speed", "heading", "recorded_at")
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT ("vehicle_id") DO UPDATE SET
+       "latitude" = EXCLUDED."latitude",
+       "longitude" = EXCLUDED."longitude",
+       "speed" = EXCLUDED."speed",
+       "heading" = EXCLUDED."heading",
+       "recorded_at" = EXCLUDED."recorded_at",
+       "updated_at" = NOW()
+     WHERE "latest_locations"."recorded_at" < EXCLUDED."recorded_at"`,
+    [
       vehicleId,
-      latitude: input.latitude,
-      longitude: input.longitude,
-      speed: input.speed,
-      heading: input.heading,
-      updatedAt: new Date(),
-    },
-    { onConflictFields: ["vehicleId"], onConflictAction: "merge" },
+      input.latitude,
+      input.longitude,
+      input.speed,
+      input.heading,
+      input.recordedAt,
+    ],
   );
 }

@@ -78,7 +78,7 @@ function createDatabase(options?: {
       heading: null,
       altitude: null,
     }),
-    location(otherDevice.id, vehicle.id, "2026-01-02T12:00:00.000Z"),
+    location(otherDevice.id, vehicle.id, "2026-01-02T00:00:00.000Z"),
     location(
       otherVehicleDevice.id,
       otherVehicle.id,
@@ -113,7 +113,7 @@ function createDatabase(options?: {
     async find(
       entity: EntityClass,
       where: Record<string, unknown>,
-      queryOptions: { orderBy: { recordedAt: "ASC" } },
+      queryOptions: { orderBy: { recordedAt: "ASC"; id: "ASC" } },
     ) {
       if (entity === LocationHistory && failReportQuery) {
         throw new Error("private report database details");
@@ -133,12 +133,16 @@ function createDatabase(options?: {
           return actual === expected;
         }),
       );
-      matches.sort(
-        (a, b) =>
-          ((a as LocationHistory).recordedAt.getTime() -
-            (b as LocationHistory).recordedAt.getTime()) *
-          (queryOptions.orderBy.recordedAt === "ASC" ? 1 : -1),
-      );
+      matches.sort((a, b) => {
+        const left = a as LocationHistory;
+        const right = b as LocationHistory;
+        const timeOrder =
+          left.recordedAt.getTime() - right.recordedAt.getTime();
+        if (timeOrder !== 0) return timeOrder;
+        return queryOptions.orderBy.id === "ASC"
+          ? left.id.localeCompare(right.id)
+          : right.id.localeCompare(left.id);
+      });
       return matches;
     },
   };
@@ -210,7 +214,17 @@ describe("GET /api/v1/reports/locations", () => {
     expect(response.body.data).toHaveLength(2);
     expect(
       response.body.data.map((row: { recordedAt: string }) => row.recordedAt),
-    ).toEqual(["2026-01-02T00:00:00.000Z", "2026-01-02T12:00:00.000Z"]);
+    ).toEqual(["2026-01-02T00:00:00.000Z", "2026-01-02T00:00:00.000Z"]);
+    expect(
+      response.body.data
+        .slice(0, 2)
+        .map((row: { deviceId: string }) => row.deviceId),
+    ).toEqual(
+      db.rows
+        .filter((row) => row.recordedAt.getTime() === new Date(start).getTime())
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .map((row) => row.deviceId),
+    );
     expect(db.reportQueries[0]).toEqual({
       recordedAt: { $gte: new Date(start), $lte: new Date(end) },
     });

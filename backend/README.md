@@ -32,6 +32,11 @@ afterward. There is deliberately no public administrator registration route.
 The API listens on `PORT` (3000 in the example environment). The default
 `FRONTEND_ORIGINS` allows the local Vite origin `http://localhost:5173`; set it
 to a comma-separated list of exact HTTP(S) origins for other environments.
+Production startup requires `DATABASE_SSL=verify-full` so PostgreSQL TLS
+certificates are verified; configure `DATABASE_SSL_CA` when the database CA is
+not trusted by the system certificate store. Initial seed credentials have no
+default password and must be explicitly configured together if that seed is
+used.
 Swagger UI is available at `/api-docs`, and its JSON document at
 `/api-docs.json`. The process verifies the PostgreSQL connection before it
 starts listening.
@@ -69,9 +74,11 @@ device as a single atomic setup flow.
 `POST /api/v1/tracking/ingest` stores a normalized location for a registered
 `deviceIdentifier`. It requires an administrator bearer token, validates the
 location data, and derives the Vehicle from the Device's stored assignment;
-clients cannot supply a Device or Vehicle database ID. Successful ingestion
-updates both location history and the existing `latest_locations` live-position
-record atomically. Repeated submissions for the same Device and `recordedAt`
+clients cannot supply a Device or Vehicle database ID. Valid readings are
+stored in location history; the `latest_locations` record is updated atomically
+only when the reading's `recordedAt` is newer. Older or same-time readings are
+kept in history but cannot replace the current position. No age-based stale
+cutoff is defined. Repeated submissions for the same Device and `recordedAt`
 return the original record with HTTP `200` and do not refresh live position.
 The unique `(device_id, recorded_at)` index enforces this key under concurrent
 requests.

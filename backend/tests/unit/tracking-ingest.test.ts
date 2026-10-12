@@ -9,6 +9,7 @@ import { RevokedToken } from "../../src/modules/auth/revoked-token.entity.js";
 import { Device } from "../../src/modules/devices/device.entity.js";
 import { LatestLocation } from "../../src/modules/tracking/latest-location.entity.js";
 import { LocationHistory } from "../../src/modules/tracking/location.entity.js";
+import { parseTrackingLocation } from "../../src/modules/tracking/tracking.schema.js";
 import { Vehicle } from "../../src/modules/vehicles/vehicle.entity.js";
 
 type EntityClass =
@@ -30,11 +31,9 @@ interface TestEntityManager {
   create(entity: EntityClass, input: object): object;
   persist(entity: object): void;
   flush(): Promise<void>;
-  upsert(
-    entity: EntityClass,
-    input: Record<string, unknown>,
-    options: { onConflictFields: string[]; onConflictAction: "merge" },
-  ): Promise<object>;
+  getConnection(): {
+    execute(query: string, parameters: unknown[]): Promise<unknown>;
+  };
 }
 
 function createFixture(options?: {
@@ -80,6 +79,7 @@ function createFixture(options?: {
     longitude: 56.78,
     speed: 5,
     heading: 90,
+    recordedAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
   });
   const tables = new Map<EntityClass, object[]>([
@@ -145,22 +145,56 @@ function createFixture(options?: {
       tables.get(LocationHistory)?.push(...pending);
       pending = [];
     },
-    async upsert(
-      entity: EntityClass,
-      input: Record<string, unknown>,
-      _options: { onConflictFields: string[]; onConflictAction: "merge" },
-    ) {
-      if (failLatestUpsert) throw new Error("private latest-position failure");
-      latestPositionUpserts += 1;
-      const rows = tables.get(entity);
-      const existing = rows?.find(
-        (row) => (row as Record<string, unknown>).vehicleId === input.vehicleId,
-      );
-      if (existing) return Object.assign(existing, input);
+    getConnection() {
+      return {
+        async execute(query: string, parameters: unknown[]) {
+          if (failLatestUpsert)
+            throw new Error("private latest-position failure");
+          latestPositionUpserts += 1;
+          expect(query).toContain(
+            '"latest_locations"."recorded_at" < EXCLUDED."recorded_at"',
+          );
+          const [vehicleId, latitude, longitude, speed, heading, recordedAt] =
+            parameters as [
+              string,
+              number,
+              number,
+              number | null,
+              number | null,
+              Date,
+            ];
+          const rows = tables.get(LatestLocation);
+          const existing = rows?.find(
+            (row) => (row as Record<string, unknown>).vehicleId === vehicleId,
+          ) as LatestLocation | undefined;
+          if (existing) {
+            if (recordedAt > existing.recordedAt) {
+              Object.assign(existing, {
+                latitude,
+                longitude,
+                speed,
+                heading,
+                recordedAt,
+                updatedAt: new Date(),
+              });
+            }
+            return [];
+          }
 
-      const created = Object.assign({ id: randomUUID() }, input);
-      rows?.push(created);
-      return created;
+          const created = Object.assign(new LatestLocation(), {
+            id: randomUUID(),
+            vehicleId,
+            latitude,
+            longitude,
+            speed,
+            heading,
+            recordedAt,
+            updatedAt: new Date(),
+          });
+          rows?.push(created);
+          return [created];
+        },
+      };
     },
   };
   const app = createApp({ em: { fork: () => em } } as never);
@@ -296,7 +330,7 @@ describe("POST /api/v1/tracking/ingest", () => {
     expect(fixture.latestPositionUpserts).toBe(2);
   });
 
-  it("accepts stale timestamps because no freshness window is defined", async () => {
+  it("keeps stale readings in history without replacing the latest position", async () => {
     const fixture = createFixture();
     const staleLocation = {
       ...validLocation,
@@ -316,6 +350,38 @@ describe("POST /api/v1/tracking/ingest", () => {
     expect(replay.status).toBe(200);
     expect(fixture.storedLocations).toHaveLength(1);
     expect(fixture.latestPositionUpserts).toBe(1);
+    expect(fixture.livePositions[0]).toEqual(fixture.initialLivePosition);
+  });
+
+  it("retains out-of-order history without replacing the newer live position", async () => {
+    const fixture = createFixture();
+    const newest = await request(fixture.app)
+      .post("/api/v1/tracking/ingest")
+      .set("Authorization", fixture.auth)
+      .send(validLocation);
+    const liveAfterNewest = structuredClone(fixture.livePositions[0]);
+    const older = await request(fixture.app)
+      .post("/api/v1/tracking/ingest")
+      .set("Authorization", fixture.auth)
+      .send({
+        ...validLocation,
+        recordedAt: "2026-10-06T05:20:00.000Z",
+        latitude: 1,
+        longitude: 2,
+      });
+
+    expect(newest.status).toBe(201);
+    expect(older.status).toBe(201);
+    expect(fixture.storedLocations).toHaveLength(2);
+    expect(fixture.storedLocations[1]).toMatchObject({
+      recordedAt: new Date("2026-10-06T05:20:00.000Z"),
+      latitude: 1,
+      longitude: 2,
+    });
+    expect(fixture.livePositions[0]).toEqual(liveAfterNewest);
+    expect(fixture.livePositions[0]?.recordedAt).toEqual(
+      new Date(validLocation.recordedAt),
+    );
   });
 
   it.each([
@@ -344,6 +410,38 @@ describe("POST /api/v1/tracking/ingest", () => {
         latitude,
         longitude,
       });
+    },
+  );
+
+  it("accepts 0,0 as a valid location and persists it as the live position", async () => {
+    const fixture = createFixture();
+    const response = await request(fixture.app)
+      .post("/api/v1/tracking/ingest")
+      .set("Authorization", fixture.auth)
+      .send({ ...validLocation, latitude: 0, longitude: 0 });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toMatchObject({
+      latitude: 0,
+      longitude: 0,
+      vehicleId: fixture.vehicle.id,
+    });
+    expect(fixture.livePositions[0]).toMatchObject({
+      latitude: 0,
+      longitude: 0,
+      vehicleId: fixture.vehicle.id,
+    });
+  });
+
+  it.each(["latitude", "longitude", "speed", "heading", "altitude"] as const)(
+    "rejects non-finite %s values",
+    (field) => {
+      expect(() =>
+        parseTrackingLocation({ ...validLocation, [field]: Number.NaN }),
+      ).toThrow();
+      expect(() =>
+        parseTrackingLocation({ ...validLocation, [field]: Infinity }),
+      ).toThrow();
     },
   );
 
