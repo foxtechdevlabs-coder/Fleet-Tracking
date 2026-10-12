@@ -6,7 +6,7 @@ config({ quiet: true });
 
 // Unset, empty and whitespace-only values all count as "not provided".
 const optional = <T extends z.ZodType>(schema: T) =>
-  z.preprocess((value) => {
+  z.preprocess((value: unknown) => {
     if (typeof value !== "string") return value;
     const trimmed = value.trim();
     return trimmed === "" ? undefined : trimmed;
@@ -29,7 +29,7 @@ const port = optional(
 );
 
 const origin = z.string().refine(
-  (value) => {
+  (value: string) => {
     try {
       const parsed = new URL(value);
       return (
@@ -45,7 +45,7 @@ const origin = z.string().refine(
     }
   },
   {
-    error: (issue) =>
+    error: (issue: { input: unknown }) =>
       `"${issue.input}" is not an HTTP(S) origin (e.g. http://localhost:5173)`,
   },
 );
@@ -59,10 +59,10 @@ const schema = z.object({
     z
       .string()
       .default("http://localhost:5173")
-      .transform((value) => value.split(",").map((item) => item.trim()))
+      .transform((value: string) => value.split(",").map((item: string) => item.trim()))
       .pipe(z.array(origin))
-      .transform((values) => [
-        ...new Set(values.map((value) => new URL(value).origin)),
+      .transform((values: string[]) => [
+        ...new Set(values.map((value: string) => new URL(value).origin)),
       ]),
   ),
 
@@ -87,7 +87,7 @@ const schema = z.object({
   DATABASE_SSL_CA: optional(z.string().optional()),
 
   JWT_SECRET: requiredString.refine(
-    (value) => Buffer.byteLength(value, "utf8") >= 32,
+    (value: string) => Buffer.byteLength(value, "utf8") >= 32,
     "must be at least 32 bytes of random data",
   ),
 
