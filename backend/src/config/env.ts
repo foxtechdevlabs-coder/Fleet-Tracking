@@ -91,18 +91,31 @@ const schema = z.object({
     "must be at least 32 bytes of random data",
   ),
 
-  ADMIN_INITIAL_EMAIL: optional(z.string().default("admin@example.com")),
-  ADMIN_INITIAL_PASSWORD: optional(z.string().default("Admin123!")),
+  ADMIN_INITIAL_EMAIL: optional(z.string().email().max(255).optional()),
+  ADMIN_INITIAL_PASSWORD: optional(z.string().min(12).max(128).optional()),
   ADMIN_INITIAL_NAME: optional(z.string().default("System Administrator")),
 });
 
 // Rules that depend on more than one variable. They run on the raw values (not the
 // schema output) so they are reported even when an unrelated variable is invalid.
-function crossFieldProblems(source: NodeJS.ProcessEnv): string[] {
+export function crossFieldProblems(source: NodeJS.ProcessEnv): string[] {
   const read = (name: string) => source[name]?.trim() || undefined;
   const problems: string[] = [];
   const databaseUrl = read("DATABASE_URL");
   const databaseSsl = read("DATABASE_SSL") ?? "require";
+  const nodeEnv = read("NODE_ENV") ?? "development";
+  const initialAdminEmail = read("ADMIN_INITIAL_EMAIL");
+  const initialAdminPassword = read("ADMIN_INITIAL_PASSWORD");
+
+  if (nodeEnv === "production" && databaseSsl !== "verify-full") {
+    problems.push("DATABASE_SSL: must be verify-full in production");
+  }
+
+  if (Boolean(initialAdminEmail) !== Boolean(initialAdminPassword)) {
+    problems.push(
+      "ADMIN_INITIAL_EMAIL and ADMIN_INITIAL_PASSWORD must be set together",
+    );
+  }
 
   if (!databaseUrl) {
     for (const name of [

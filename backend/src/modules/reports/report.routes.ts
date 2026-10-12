@@ -11,7 +11,7 @@ export const reportRoutes = Router();
  *   get:
  *     tags: [Reports]
  *     summary: Generate a location report
- *     description: Filters stored location history by inclusive recordedAt bounds and optional Vehicle and registered Device identifier. Supplied filters use AND logic. Both date bounds are optional.
+ *     description: Filters stored location history by inclusive recordedAt bounds and optional Vehicle and registered Device identifier. Supplied filters use AND logic. Both date bounds are optional. Results are ordered by recordedAt ascending with a stable tie-breaker.
  *     security: [{ bearerAuth: [] }]
  *     parameters:
  *       - in: query

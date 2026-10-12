@@ -127,7 +127,14 @@ DEVICE_VEHICLE_ASSOCIATION_INVALID`. Valid data is written to
 `location_history` and upserted into `latest_locations` in the same
 transaction. The live position is resolved exclusively from the registered
 Device's Vehicle association; no Device or Vehicle is created and no database
-schema change is required.
+schema change is required to resolve that association.
+
+`location_history` retains valid readings even when they arrive out of order.
+`latest_locations` changes only when the incoming `recordedAt` is newer than
+the timestamp of the position currently stored for that Vehicle. Older or
+same-time readings therefore cannot replace the current position. No age-based
+stale-reading cutoff is defined. Its `recorded_at` value is backfilled from
+the newest valid history row for each Vehicle by the accompanying migration.
 
 `recordedAt` must be a valid ISO 8601 timestamp with a timezone. Latitude and
 longitude must be within [-90, 90] and [-180, 180]. Supplied speed must be
@@ -168,7 +175,8 @@ reads records from the existing `location_history` table. Optional `from` and
 match a registered Device. All supplied filters are applied together at the
 database query layer. Invalid filters return `400`; unknown Vehicles or
 Devices return `404`; a valid filter set with no matching rows returns an
-empty `data` array.
+empty `data` array. Results are ordered by `recordedAt` ascending, with a
+stable tie-breaker for records sharing the same timestamp.
 
 Each report row preserves stored valid coordinates, includes nullable
 `speed`, `heading`, and `altitude` as stored, and safely returns null for

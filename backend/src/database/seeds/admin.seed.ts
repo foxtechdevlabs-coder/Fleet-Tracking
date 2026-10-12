@@ -16,6 +16,19 @@ export interface SeedResult {
   admin?: AdminProfile;
 }
 
+export function requireInitialAdminCredentials(
+  email: string | undefined,
+  password: string | undefined,
+): { email: string; password: string } {
+  if (!email || !password) {
+    throw new Error(
+      "ADMIN_INITIAL_EMAIL and ADMIN_INITIAL_PASSWORD must be configured in environment",
+    );
+  }
+
+  return { email, password };
+}
+
 /**
  * Idempotently seeds the single primary administrator account.
  * Skips creation if an administrator record already exists in the database.
@@ -35,15 +48,11 @@ export async function seedAdmin(ormInstance?: MikroORM): Promise<SeedResult> {
       return { seeded: false, message };
     }
 
-    const email = env.adminInitialEmail;
-    const password = env.adminInitialPassword;
+    const { email, password } = requireInitialAdminCredentials(
+      env.adminInitialEmail,
+      env.adminInitialPassword,
+    );
     const name = env.adminInitialName;
-
-    if (!email || !password) {
-      throw new Error(
-        "ADMIN_INITIAL_EMAIL and ADMIN_INITIAL_PASSWORD must be configured in environment",
-      );
-    }
 
     console.log(`🌱 Seeding initial administrator (${email})...`);
     const passwordHash = await hashPassword(password);

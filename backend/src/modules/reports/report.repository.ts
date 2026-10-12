@@ -19,6 +19,6 @@ export function findLocationReport(
   if (filters.deviceId) where.deviceId = filters.deviceId;
 
   return em.find(LocationHistory, where, {
-    orderBy: { recordedAt: "ASC" },
+    orderBy: { recordedAt: "ASC", id: "ASC" },
   });
 }

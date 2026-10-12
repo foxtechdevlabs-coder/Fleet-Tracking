@@ -44,7 +44,7 @@ export const trackingRoutes = Router();
  *           application/json:
  *             schema: { $ref: '#/components/schemas/TrackingLocationResponse' }
  *       201:
- *         description: Location history stored and the resolved Vehicle's latest position refreshed.
+ *         description: Location history stored. The Vehicle's latest position is updated only when this reading has a newer recordedAt timestamp.
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/TrackingLocationResponse' }
