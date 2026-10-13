@@ -80,3 +80,42 @@ export interface TableColumnConfig {
 }
 
 export type MapViewMode = 'street' | 'satellite' | 'traffic';
+
+// Tracking Report interfaces
+export interface TrackingReportFilter {
+  vehicleId?: string;
+  deviceId?: string;
+  dateFrom: string; // ISO string or YYYY-MM-DDTHH:mm
+  dateTo: string;   // ISO string or YYYY-MM-DDTHH:mm
+}
+
+export interface TrackingReportRecord {
+  id?: string;
+  recordedAt: string; // ISO timestamp
+  vehicleId?: string;
+  plateNumber?: string;
+  vehicleMake?: string;
+  vehicleModel?: string;
+  deviceId?: string;
+  latitude: number;
+  longitude: number;
+  speed?: number | null; // km/h
+  heading?: number | null; // degrees (0-360)
+  altitude?: number | null; // meters
+  status?: string;
+  ignition?: boolean;
+}
+
+export interface TrackingReportResponse {
+  success?: boolean;
+  data: TrackingReportRecord[];
+  total?: number;
+  error?: string;
+}
+
+export interface DeviceSummary {
+  id: string;
+  identifier: string;
+  vehicleId?: string;
+  status: 'active' | 'inactive' | 'unassigned' | string;
+}

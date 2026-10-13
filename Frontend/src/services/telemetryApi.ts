@@ -1,7 +1,16 @@
 // API service layer for Fleet Telemetry & Tracking
 // Gracefully handles network states when backend is in development or offline.
 
-import type { Vehicle, TelemetryData, AlertItem, TelemetryEventItem, FleetSummaryMetrics } from '../types/telemetry';
+import type {
+  Vehicle,
+  TelemetryData,
+  AlertItem,
+  TelemetryEventItem,
+  FleetSummaryMetrics,
+  TrackingReportFilter,
+  TrackingReportRecord,
+  DeviceSummary,
+} from '../types/telemetry';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -107,4 +116,87 @@ export function computeFleetMetrics(vehicles: Vehicle[]): FleetSummaryMetrics {
     stopped,
     offline,
   };
+}
+
+export async function fetchDevices(): Promise<DeviceSummary[]> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/devices`, {
+      headers: { 'Accept': 'application/json' },
+    });
+    if (!res.ok) {
+      const fallback = await fetch(`${API_BASE_URL}/v1/devices`, {
+        headers: { 'Accept': 'application/json' },
+      });
+      if (!fallback.ok) return [];
+      const json = await fallback.json();
+      return Array.isArray(json) ? json : json.data || [];
+    }
+    const json = await res.json();
+    return Array.isArray(json) ? json : json.data || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchTrackingReport(
+  filters: TrackingReportFilter,
+  signal?: AbortSignal
+): Promise<TrackingReportRecord[]> {
+  const params = new URLSearchParams();
+  if (filters.vehicleId) params.append('vehicleId', filters.vehicleId);
+  if (filters.deviceId) params.append('deviceId', filters.deviceId);
+  if (filters.dateFrom) params.append('dateFrom', filters.dateFrom);
+  if (filters.dateTo) params.append('dateTo', filters.dateTo);
+
+  const queryString = params.toString();
+  const url = `${API_BASE_URL}/reports/tracking${queryString ? `?${queryString}` : ''}`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      signal,
+    });
+
+    if (!res.ok) {
+      // Also try alternative endpoint /v1/reports/tracking if 404
+      if (res.status === 404) {
+        const altUrl = `${API_BASE_URL}/v1/reports/tracking${queryString ? `?${queryString}` : ''}`;
+        try {
+          const altRes = await fetch(altUrl, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            signal,
+          });
+          if (altRes.ok) {
+            const altJson = await altRes.json();
+            return Array.isArray(altJson) ? altJson : altJson.data || [];
+          }
+        } catch {
+          // ignore fallback error and propagate main error
+        }
+      }
+
+      let errorMessage = `HTTP ${res.status}: ${res.statusText || 'Failed to retrieve tracking report'}`;
+      try {
+        const errJson = await res.json();
+        if (errJson.message) errorMessage = errJson.message;
+        else if (errJson.error) errorMessage = errJson.error;
+      } catch {
+        // ignore JSON parse error on error responses
+      }
+      throw new Error(errorMessage);
+    }
+
+    const json = await res.json();
+    return Array.isArray(json) ? json : json.data || [];
+  } catch (error: unknown) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw error;
+    }
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('Unable to connect to tracking report service. Please check network connectivity.');
+  }
 }

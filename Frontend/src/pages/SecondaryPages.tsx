@@ -1,5 +1,5 @@
 import React from 'react';
-import { Truck, Shield, Database } from 'lucide-react';
+import { Truck, Database } from 'lucide-react';
 import { TelemetryWatchlist } from '../components/dashboard/TelemetryWatchlist';
 
 export const FleetPage: React.FC = () => {
@@ -50,31 +50,7 @@ export const HistoryPage: React.FC = () => {
   );
 };
 
-export const ReportsPage: React.FC = () => {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div className="page-header">
-        <div>
-          <div className="header-tag">
-            <Shield size={13} />
-            <span>EXECUTIVE AUDIT &gt; OPERATIONAL REPORTS</span>
-          </div>
-          <h1 className="page-title">Fleet Operations Reports</h1>
-          <p className="page-subtitle">
-            Generate uptime reports, fuel efficiency audits, and harsh driving violation summaries.
-          </p>
-        </div>
-      </div>
-
-      <div className="panel-card" style={{ padding: '40px 24px', textAlign: 'center', alignItems: 'center' }}>
-        <h2 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#1e293b' }}>Fleet Analytics &amp; Compliance</h2>
-        <p style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '480px', marginTop: '6px' }}>
-          Realtime reporting pipelines compute daily driver scorecards, idling hours, and fuel consumption trends.
-        </p>
-      </div>
-    </div>
-  );
-};
+export { ReportsPage } from './ReportsPage';
 
 export const SettingsPage: React.FC = () => {
   return (
