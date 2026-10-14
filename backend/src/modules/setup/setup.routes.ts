@@ -37,9 +37,20 @@ export const setupRoutes = Router();
  *                   identifier: { type: string, minLength: 1, maxLength: 100 }
  *                   status: { type: string, enum: [active, inactive], default: active }
  *     responses:
- *       201: { description: Vehicle and its assigned device were created. }
- *       400: { description: Missing, malformed, or unsupported field. }
- *       401: { description: Authentication required. }
- *       409: { description: Vehicle plate or device identifier already exists. }
+ *       201:
+ *         description: Vehicle and assigned device created.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [success, message, data]
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 message: { type: string, example: Vehicle and device created successfully }
+ *                 data: { type: object }
+ *       400: { $ref: '#/components/responses/BadRequest' }
+ *       401: { $ref: '#/components/responses/Unauthorized' }
+ *       409: { $ref: '#/components/responses/Conflict' }
+ *       500: { $ref: '#/components/responses/ServerError' }
  */
 setupRoutes.post("/vehicle-device", requireAdmin, createVehicleAndDevice);

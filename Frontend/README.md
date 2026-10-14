@@ -23,6 +23,18 @@ npm run dev
 - `/reports` — operational reports.
 - `/dashboard` — fleet overview (also the default route).
 
-The login form does not simulate authentication. It displays an unavailable-service
-message until an `onLogin` handler is connected; that handler should resolve only
-after the real authentication request succeeds.
+## Authentication
+
+The login form sends `POST /api/v1/auth/login` with `{ "email", "password" }`.
+It accepts the documented `data.accessToken`, `data.tokenType`, and
+`data.expiresIn` fields along with the documented `data.admin` identity
+(`id`, `email`, `name`, and `role`). It keeps only those supported fields in
+`sessionStorage` until logout, tab close, or token expiry. The development
+server proxies `/api` to `http://localhost:3000`. For a deployed frontend, set
+`VITE_API_BASE_URL` to the API origin (for example, `https://api.example.com`).
+
+All application routes are protected. Logout clears the local session and
+requests server-side token revocation. Pages without a connected data endpoint
+show an empty state instead of sample fleet or telemetry records. The frontend
+does not provide a local or fake-auth fallback; login requires the documented
+API to be available.

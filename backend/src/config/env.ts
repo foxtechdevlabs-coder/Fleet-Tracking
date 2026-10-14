@@ -1,92 +1,199 @@
 // Environment variable loading and validation.
 import { config } from "dotenv";
+import { z } from "zod";
 
 config({ quiet: true });
 
-function required(name: string): string {
-  const value = process.env[name]?.trim();
+// Unset, empty and whitespace-only values all count as "not provided".
+const optional = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((value: unknown) => {
+    if (typeof value !== "string") return value;
+    const trimmed = value.trim();
+    return trimmed === "" ? undefined : trimmed;
+  }, schema);
 
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
+const requiredString = optional(z.string({ error: "is required" }));
 
-  return value;
-}
-
-function port(name: string): number {
-  const raw = required(name);
-  const value = Number(raw);
-
-  if (!Number.isInteger(value) || value < 1 || value > 65535) {
-    throw new Error(`Invalid ${name}: "${raw}" is not a valid port number`);
-  }
-
-  return value;
-}
-
-function origins(name: string): string[] {
-  const configured = process.env[name]?.trim();
-  const values = configured ? configured.split(",") : ["http://localhost:5173"];
-
-  return [
-    ...new Set(
-      values.map((value) => {
-        const candidate = value.trim();
-        let parsed: URL;
-
-        try {
-          parsed = new URL(candidate);
-        } catch {
-          throw new Error(
-            `Invalid ${name}: each value must be an HTTP(S) origin`,
-          );
-        }
-
-        if (
-          !["http:", "https:"].includes(parsed.protocol) ||
-          parsed.username ||
-          parsed.password ||
-          parsed.pathname !== "/" ||
-          parsed.search ||
-          parsed.hash
-        ) {
-          throw new Error(
-            `Invalid ${name}: each value must be an HTTP(S) origin`,
-          );
-        }
-
-        return parsed.origin;
-      }),
+const port = optional(
+  z
+    .string({ error: "is required" })
+    .regex(/^\d+$/, "must be a whole number")
+    .transform(Number)
+    .pipe(
+      z
+        .number()
+        .int()
+        .min(1, "must be between 1 and 65535")
+        .max(65535, "must be between 1 and 65535"),
     ),
-  ];
-}
+);
 
-function jwtSecret(): string {
-  const value = required("JWT_SECRET");
+const origin = z.string().refine(
+  (value: string) => {
+    try {
+      const parsed = new URL(value);
+      return (
+        ["http:", "https:"].includes(parsed.protocol) &&
+        !parsed.username &&
+        !parsed.password &&
+        parsed.pathname === "/" &&
+        !parsed.search &&
+        !parsed.hash
+      );
+    } catch {
+      return false;
+    }
+  },
+  {
+    error: (issue: { input: unknown }) =>
+      `"${issue.input}" is not an HTTP(S) origin (e.g. http://localhost:5173)`,
+  },
+);
 
-  if (Buffer.byteLength(value, "utf8") < 32) {
-    throw new Error("Invalid JWT_SECRET: use at least 32 bytes of random data");
+const databaseSslModes = ["disable", "require", "verify-full"] as const;
+
+const schema = z.object({
+  NODE_ENV: optional(z.string().default("development")),
+  PORT: port,
+  FRONTEND_ORIGINS: optional(
+    z
+      .string()
+      .default("http://localhost:5173")
+      .transform((value: string) => value.split(",").map((item: string) => item.trim()))
+      .pipe(z.array(origin))
+      .transform((values: string[]) => [
+        ...new Set(values.map((value: string) => new URL(value).origin)),
+      ]),
+  ),
+
+  // Either DATABASE_URL, or all of the DB_* parts (see crossFieldProblems).
+  DATABASE_URL: optional(z.string().optional()),
+  DB_USERNAME: optional(z.string().optional()),
+  DB_PASSWORD: optional(z.string().optional()),
+  DB_HOST: optional(z.string().optional()),
+  DB_PORT: optional(z.string().optional()),
+  DB_NAME: optional(z.string().optional()),
+
+  // "require" encrypts without verifying the server certificate; "verify-full" also
+  // verifies it (against DATABASE_SSL_CA when set, otherwise the system CAs).
+  DATABASE_SSL: optional(
+    z
+      .enum(databaseSslModes, {
+        error: `must be one of ${databaseSslModes.join(", ")}`,
+      })
+      .default("require"),
+  ),
+  // Relative paths are resolved against the backend/ directory (see config/database.ts).
+  DATABASE_SSL_CA: optional(z.string().optional()),
+
+  JWT_SECRET: requiredString.refine(
+    (value: string) => Buffer.byteLength(value, "utf8") >= 32,
+    "must be at least 32 bytes of random data",
+  ),
+
+  ADMIN_INITIAL_EMAIL: optional(z.string().email().max(255).optional()),
+  ADMIN_INITIAL_PASSWORD: optional(z.string().min(12).max(128).optional()),
+  ADMIN_INITIAL_NAME: optional(z.string().default("System Administrator")),
+});
+
+// Rules that depend on more than one variable. They run on the raw values (not the
+// schema output) so they are reported even when an unrelated variable is invalid.
+export function crossFieldProblems(source: NodeJS.ProcessEnv): string[] {
+  const read = (name: string) => source[name]?.trim() || undefined;
+  const problems: string[] = [];
+  const databaseUrl = read("DATABASE_URL");
+  const databaseSsl = read("DATABASE_SSL") ?? "require";
+  const nodeEnv = read("NODE_ENV") ?? "development";
+  const initialAdminEmail = read("ADMIN_INITIAL_EMAIL");
+  const initialAdminPassword = read("ADMIN_INITIAL_PASSWORD");
+
+  if (nodeEnv === "production" && databaseSsl !== "verify-full") {
+    problems.push("DATABASE_SSL: must be verify-full in production");
   }
 
-  return value;
+  if (Boolean(initialAdminEmail) !== Boolean(initialAdminPassword)) {
+    problems.push(
+      "ADMIN_INITIAL_EMAIL and ADMIN_INITIAL_PASSWORD must be set together",
+    );
+  }
+
+  if (!databaseUrl) {
+    for (const name of [
+      "DB_USERNAME",
+      "DB_PASSWORD",
+      "DB_HOST",
+      "DB_PORT",
+      "DB_NAME",
+    ]) {
+      if (!read(name)) {
+        problems.push(`${name}: is required when DATABASE_URL is not set`);
+      }
+    }
+    const dbPort = read("DB_PORT");
+    if (dbPort && !port.safeParse(dbPort).success) {
+      problems.push("DB_PORT: must be a whole number between 1 and 65535");
+    }
+  }
+
+  // MikroORM ignores URL query parameters, so `sslmode` here would have no effect.
+  if (databaseUrl && /[?&]sslmode=/i.test(databaseUrl)) {
+    problems.push(
+      "DATABASE_URL: remove `sslmode`; configure TLS with DATABASE_SSL instead",
+    );
+  }
+
+  // A CA is only used for verification; with any other mode it would be silently ignored.
+  if (read("DATABASE_SSL_CA") && databaseSsl !== "verify-full") {
+    problems.push(
+      `DATABASE_SSL_CA: is only used when DATABASE_SSL=verify-full (current: ${databaseSsl})`,
+    );
+  }
+
+  return problems;
 }
+
+const result = schema.safeParse(process.env);
+const problems = [
+  ...(result.error?.issues.map(
+    (issue) => `${String(issue.path[0] ?? "(root)")}: ${issue.message}`,
+  ) ?? []),
+  ...crossFieldProblems(process.env),
+];
+
+if (!result.success || problems.length > 0) {
+  throw new Error(
+    `Invalid environment configuration (check your .env):\n${problems.map((problem) => `  - ${problem}`).join("\n")}`,
+  );
+}
+
+const parsed = result.data;
 
 export const env = {
-  nodeEnv: process.env.NODE_ENV?.trim() || "development",
+  nodeEnv: parsed.NODE_ENV,
 
-  port: port("PORT"),
+  port: parsed.PORT,
 
-  frontendOrigins: origins("FRONTEND_ORIGINS"),
-
-  jwtSecret: jwtSecret(),
+  frontendOrigins: parsed.FRONTEND_ORIGINS,
 
   databaseUrl:
-    process.env.DATABASE_URL?.trim() ||
+    parsed.DATABASE_URL ??
     `postgresql://${encodeURIComponent(
-      required("DB_USERNAME"),
+      parsed.DB_USERNAME ?? "",
     )}:${encodeURIComponent(
-      required("DB_PASSWORD"),
-    )}@${required("DB_HOST")}:${port("DB_PORT")}/${required("DB_NAME")}`,
+      parsed.DB_PASSWORD ?? "",
+    )}@${parsed.DB_HOST}:${Number(parsed.DB_PORT)}/${parsed.DB_NAME}`,
+
+  databaseSsl: parsed.DATABASE_SSL,
+
+  databaseSslCa: parsed.DATABASE_SSL_CA,
+
+  jwtSecret: parsed.JWT_SECRET,
+
+  adminInitialEmail: parsed.ADMIN_INITIAL_EMAIL,
+
+  adminInitialPassword: parsed.ADMIN_INITIAL_PASSWORD,
+
+  adminInitialName: parsed.ADMIN_INITIAL_NAME,
 } as const;
 
 export const isDevelopment = env.nodeEnv === "development";

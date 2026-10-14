@@ -17,6 +17,12 @@ export class LocationHistory {
 export const LocationHistorySchema = new EntitySchema<LocationHistory>({
   class: LocationHistory,
   tableName: "location_history",
+  uniques: [
+    {
+      properties: ["deviceId", "recordedAt"],
+      name: "uq_location_history_device_recorded_at",
+    },
+  ],
   indexes: [
     { properties: ["vehicleId"], name: "idx_location_history_vehicle_id" },
     { properties: ["deviceId"], name: "idx_location_history_device_id" },
@@ -85,4 +91,3 @@ export const LocationHistorySchema = new EntitySchema<LocationHistory>({
 });
 
 export { LocationHistory as Location, LocationHistorySchema as LocationSchema };
-

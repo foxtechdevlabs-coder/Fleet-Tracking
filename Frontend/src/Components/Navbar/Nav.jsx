@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Clock, LogOut, ChevronRight } from "lucide-react";
 import "./Nav.css";
 import logo from "./logo.svg";
+import { useAuth } from "../../auth/AuthContext";
 
 const routeTitles = {
   "/dashboard": "Fleet Telematics",
@@ -17,8 +18,10 @@ const routeTitles = {
 function Nav() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { admin, logout } = useAuth();
 
   const [currentTime, setCurrentTime] = useState("");
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     const updateTime = () => {
@@ -40,9 +43,30 @@ function Nav() {
 
   const currentSection = routeTitles[location.pathname] || "Fleet Telematics";
 
-  const handleExit = () => {
-    // Navigate to Login page
-    navigate("/login");
+  const handleExit = async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    const logoutRequest = logout();
+    navigate("/login", {
+      replace: true,
+      state: { logoutNotice: "You have been signed out." }
+    });
+
+    try {
+      await logoutRequest;
+    } catch (error) {
+      navigate("/login", {
+        replace: true,
+        state: {
+          logoutNotice: "You have been signed out on this device.",
+          logoutError: error instanceof Error
+            ? `The server could not revoke the session: ${error.message}`
+            : "The server could not revoke the session."
+        }
+      });
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   return (
@@ -64,26 +88,28 @@ function Nav() {
       {/* Right Section */}
       <div className="nav-right">
         {/* Realtime Status */}
-        <div className="connection-status" title="Authentication and telemetry APIs are not connected">
+        <div className="connection-status" title="Administrator session is active">
           <span className="status-dot status-dot-idle"></span>
-          <span>UI Preview</span>
+          <span>Secure session</span>
         </div>
 
         {/* Live IST Time */}
         <div className="nav-time" title="Indian Standard Time">
           <div className="time-display">
             <Clock size={11} className="time-icon" />
-            <span>{currentTime || "15:42:08"} IST</span>
+            <span>{currentTime || "--:--:--"} IST</span>
           </div>
           <small>Asia/Kolkata</small>
         </div>
 
         {/* User Profile */}
-        <div className="user-profile" title="Fleet operator workspace preview">
-          <div className="avatar">FT</div>
+        <div className="user-profile" title={admin.email}>
+          <div className="avatar" aria-hidden="true">
+            {admin.name.trim().charAt(0).toUpperCase()}
+          </div>
           <div className="user-info">
-            <strong>Fleet Operator</strong>
-            <small>Workspace</small>
+            <strong>{admin.name}</strong>
+            <small>{admin.role}</small>
           </div>
         </div>
 
@@ -91,11 +117,13 @@ function Nav() {
         <button
           className="exit-btn"
           onClick={handleExit}
+          disabled={isLoggingOut}
           title="Sign out to Login"
-          aria-label="Exit console to Login"
+          aria-label="Sign out"
+          aria-busy={isLoggingOut}
         >
           <LogOut size={13} className="exit-icon" />
-          <span>Exit</span>
+          <span>{isLoggingOut ? "Signing out..." : "Sign out"}</span>
         </button>
       </div>
     </header>

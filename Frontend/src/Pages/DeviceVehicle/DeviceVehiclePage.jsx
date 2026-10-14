@@ -1,19 +1,16 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   Cpu,
   Truck,
   Plus,
   ArrowLeft,
-  CheckCircle2,
-  AlertCircle,
   Radio
 } from "lucide-react";
 import "./DeviceVehiclePage.css";
+import { ErrorState } from "../../Components/Feedback/AsyncState";
 
 function DeviceVehiclePage() {
-  const navigate = useNavigate();
-
   // Controlled form state
   const [formData, setFormData] = useState({
     vehicleId: "",
@@ -29,8 +26,6 @@ function DeviceVehiclePage() {
   });
 
   const [errors, setErrors] = useState({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitSuccess, setSubmitSuccess] = useState(false);
   const [apiError, setApiError] = useState("");
 
   const handleChange = (e) => {
@@ -59,10 +54,9 @@ function DeviceVehiclePage() {
     return errs;
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     setApiError("");
-    setSubmitSuccess(false);
 
     const validationErrors = validate();
     if (Object.keys(validationErrors).length > 0) {
@@ -70,30 +64,7 @@ function DeviceVehiclePage() {
       return;
     }
 
-    setIsSubmitting(true);
-
-    try {
-      /*
-       * BACKEND INTEGRATION HANDLER:
-       * When backend endpoint is implemented, dispatch here:
-       * const res = await fetch('/api/vehicles/register-with-device', {
-       *   method: 'POST',
-       *   headers: { 'Content-Type': 'application/json' },
-       *   body: JSON.stringify(formData)
-       * });
-       */
-      // Prepared handler simulation
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      setSubmitSuccess(true);
-      // Reset form after short notice
-      setTimeout(() => {
-        navigate("/dashboard");
-      }, 1500);
-    } catch (err) {
-      setApiError(err.message || "Failed to provision device and vehicle.");
-    } finally {
-      setIsSubmitting(false);
-    }
+    setApiError("Registration is unavailable until the provisioning API is connected.");
   };
 
   return (
@@ -116,17 +87,7 @@ function DeviceVehiclePage() {
       </div>
 
       {apiError && (
-        <div className="error-banner" role="alert">
-          <AlertCircle size={16} />
-          <span>{apiError}</span>
-        </div>
-      )}
-
-      {submitSuccess && (
-        <div className="success-banner" role="alert">
-          <CheckCircle2 size={16} />
-          <span>Vehicle and Telemetry unit successfully registered and bonded. Redirecting to Dashboard...</span>
-        </div>
+        <ErrorState className="error-banner" message={apiError} />
       )}
 
       <form onSubmit={handleSubmit} className="provision-form" noValidate>
@@ -150,7 +111,6 @@ function DeviceVehiclePage() {
                   placeholder="e.g. VH-029"
                   value={formData.vehicleId}
                   onChange={handleChange}
-                  disabled={isSubmitting}
                 />
                 {errors.vehicleId && <span className="err-text">{errors.vehicleId}</span>}
               </div>
@@ -166,7 +126,6 @@ function DeviceVehiclePage() {
                   placeholder="e.g. TN 74 AB 9821"
                   value={formData.plateNumber}
                   onChange={handleChange}
-                  disabled={isSubmitting}
                 />
                 {errors.plateNumber && <span className="err-text">{errors.plateNumber}</span>}
               </div>
@@ -178,7 +137,6 @@ function DeviceVehiclePage() {
                   name="vehicleModel"
                   value={formData.vehicleModel}
                   onChange={handleChange}
-                  disabled={isSubmitting}
                 >
                   <option value="BharatBenz 2823R">BharatBenz 2823R (Heavy Hauler)</option>
                   <option value="Tata Prima 4028.S">Tata Prima 4028.S (Tractor Trailer)</option>
@@ -199,7 +157,6 @@ function DeviceVehiclePage() {
                   placeholder="e.g. K. Sundarraj"
                   value={formData.driverName}
                   onChange={handleChange}
-                  disabled={isSubmitting}
                 />
                 {errors.driverName && <span className="err-text">{errors.driverName}</span>}
               </div>
@@ -226,7 +183,6 @@ function DeviceVehiclePage() {
                   placeholder="e.g. 863920194820192"
                   value={formData.deviceImei}
                   onChange={handleChange}
-                  disabled={isSubmitting}
                 />
                 {errors.deviceImei && <span className="err-text">{errors.deviceImei}</span>}
               </div>
@@ -238,7 +194,6 @@ function DeviceVehiclePage() {
                   name="deviceModel"
                   value={formData.deviceModel}
                   onChange={handleChange}
-                  disabled={isSubmitting}
                 >
                   <option value="TELTONIKA-FMB120">Teltonika FMB120 (CAN + GPS)</option>
                   <option value="TELTONIKA-FMB920">Teltonika FMB920 (Compact Basic)</option>
@@ -258,7 +213,6 @@ function DeviceVehiclePage() {
                   placeholder="e.g. +91 98401 23456"
                   value={formData.simNumber}
                   onChange={handleChange}
-                  disabled={isSubmitting}
                 />
                 {errors.simNumber && <span className="err-text">{errors.simNumber}</span>}
               </div>
@@ -270,7 +224,6 @@ function DeviceVehiclePage() {
                   name="reportingInterval"
                   value={formData.reportingInterval}
                   onChange={handleChange}
-                  disabled={isSubmitting}
                 >
                   <option value="5">Every 5 seconds (High Frequency)</option>
                   <option value="10">Every 10 seconds (Standard Nominal)</option>
@@ -287,18 +240,9 @@ function DeviceVehiclePage() {
           <Link to="/dashboard" className="cancel-btn">
             Cancel
           </Link>
-          <button type="submit" className="save-provision-btn" disabled={isSubmitting}>
-            {isSubmitting ? (
-              <>
-                <span className="btn-spinner"></span>
-                <span>Registering & Bonding Unit...</span>
-              </>
-            ) : (
-              <>
-                <Plus size={16} />
-                <span>Register Device & Vehicle</span>
-              </>
-            )}
+          <button type="submit" className="save-provision-btn">
+            <Plus size={16} />
+            <span>Register Device & Vehicle</span>
           </button>
         </div>
       </form>

@@ -1,5 +1,7 @@
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider } from "./auth/AuthContext";
+import RequireAuth from "./auth/RequireAuth";
 import AppLayout from "./Components/Layout/AppLayout";
 import Cont from "./Components/Content/Cont";
 import Login from "./Components/Login/Login";
@@ -15,25 +17,26 @@ import "./App.css";
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* Authentication Route */}
-        <Route path="/login" element={<Login />} />
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<Login />} />
 
-        {/* Application layout routes */}
-        <Route path="/" element={<AppLayout />}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<Cont />} />
-          <Route path="device-vehicle" element={<DeviceVehiclePage />} />
-          <Route path="fleet" element={<FleetPage />} />
-          <Route path="live-tracking" element={<LiveTrackingPage />} />
-          <Route path="history" element={<HistoryPage />} />
-          <Route path="reports" element={<ReportsPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-        </Route>
+          <Route element={<RequireAuth />}>
+            <Route path="/" element={<AppLayout />}>
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="dashboard" element={<Cont />} />
+              <Route path="device-vehicle" element={<DeviceVehiclePage />} />
+              <Route path="fleet" element={<FleetPage />} />
+              <Route path="live-tracking" element={<LiveTrackingPage />} />
+              <Route path="history" element={<HistoryPage />} />
+              <Route path="reports" element={<ReportsPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+            </Route>
+          </Route>
 
-        {/* 404 Catch-All */}
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
   );
 }

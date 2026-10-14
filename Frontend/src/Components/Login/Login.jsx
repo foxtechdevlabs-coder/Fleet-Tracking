@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useRef, useState } from "react";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import {
   Activity,
   AlertCircle,
@@ -14,9 +14,14 @@ import {
 } from "lucide-react";
 import "./Login.css";
 import logo from "../Navbar/logo.svg";
+import { useAuth } from "../../auth/AuthContext";
+import { ErrorState, LoadingState } from "../Feedback/AsyncState";
 
-function Login({ onLogin }) {
+function Login() {
+  const { isAuthenticated, login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const submittingRef = useRef(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState({});
@@ -26,6 +31,7 @@ function Login({ onLogin }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (submittingRef.current) return;
     setApiError("");
 
     const nextErrors = {};
@@ -42,23 +48,32 @@ function Login({ onLogin }) {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
-      if (typeof onLogin !== "function") {
-        await Promise.resolve();
-        throw new Error("Sign-in is unavailable until the authentication API is connected.");
-      }
-
-      await onLogin({ email: normalizedEmail, password });
-      navigate("/dashboard");
+      await login(normalizedEmail, password);
+      const destination = location.state?.from;
+      const redirectTo = destination && destination.pathname !== "/login"
+        ? `${destination.pathname}${destination.search || ""}${destination.hash || ""}`
+        : "/dashboard";
+      navigate(redirectTo, { replace: true });
     } catch (error) {
       setApiError(
         error instanceof Error ? error.message : "Unable to sign in. Please try again."
       );
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
+
+  if (isAuthenticated) {
+    const destination = location.state?.from;
+    const redirectTo = destination && destination.pathname !== "/login"
+      ? `${destination.pathname}${destination.search || ""}${destination.hash || ""}`
+      : "/dashboard";
+    return <Navigate to={redirectTo} replace />;
+  }
 
   const handleEmailChange = (event) => {
     setEmail(event.target.value);
@@ -137,11 +152,17 @@ function Login({ onLogin }) {
               </p>
             </div>
 
-            {apiError && (
-              <div className="api-error-alert" role="alert">
-                <AlertCircle size={15} />
-                <span>{apiError}</span>
+            {location.state?.logoutNotice && (
+              <div className="login-notice" role="status">
+                {location.state.logoutNotice}
               </div>
+            )}
+
+            {(apiError || location.state?.logoutError) && (
+              <ErrorState
+                className="api-error-alert"
+                message={apiError || location.state.logoutError}
+              />
             )}
 
             <form onSubmit={handleSubmit} noValidate className="auth-form">
@@ -213,10 +234,7 @@ function Login({ onLogin }) {
                 aria-busy={isSubmitting}
               >
                 {isSubmitting ? (
-                  <>
-                    <span className="submit-spinner" />
-                    <span>Signing in...</span>
-                  </>
+                  <LoadingState compact message="Signing in..." />
                 ) : (
                   <>
                     <span>Sign in</span>
@@ -227,7 +245,7 @@ function Login({ onLogin }) {
             </form>
 
             <div className="form-footer-compliance">
-              <p>Your credentials are only submitted when an authentication service is connected.</p>
+              <p>Your credentials are sent to the FleetTrack authentication service over HTTPS.</p>
             </div>
           </div>
         </section>

@@ -40,7 +40,8 @@ export const TelemetryEventSchema = new EntitySchema<TelemetryEvent>({
       type: "string",
       length: 100,
       fieldName: "event_type",
-      comment: "e.g. ignition_on, ignition_off, fuel_low, harsh_brake, geofence_exit",
+      comment:
+        "e.g. ignition_on, ignition_off, fuel_low, harsh_brake, geofence_exit",
     },
     payload: {
       type: "json",
@@ -65,4 +66,3 @@ export const TelemetryEventSchema = new EntitySchema<TelemetryEvent>({
 });
 
 export { TelemetryEvent as Telemetry, TelemetryEventSchema as TelemetrySchema };
-
