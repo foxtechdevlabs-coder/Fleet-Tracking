@@ -42,6 +42,9 @@
 }
 
 .error-banner {
+  width: auto;
+  min-height: 0;
+  justify-content: flex-start;
   background: #fef2f2;
   border: 1px solid #fecaca;
   color: #b91c1c;

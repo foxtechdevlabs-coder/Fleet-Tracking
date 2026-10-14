@@ -100,10 +100,12 @@ export async function signIn(email, password) {
     data.tokenType.toLowerCase() !== "bearer" ||
     !Number.isFinite(data.expiresIn) ||
     data.expiresIn <= 0 ||
-    typeof data.admin?.id !== "string" ||
     typeof data.admin?.email !== "string" ||
+    !data.admin.email ||
     typeof data.admin?.name !== "string" ||
-    typeof data.admin?.role !== "string"
+    !data.admin.name.trim() ||
+    typeof data.admin?.role !== "string" ||
+    !data.admin.role
   ) {
     throw new ApiError("The authentication service returned an invalid response. Please try again.");
   }
@@ -113,7 +115,6 @@ export async function signIn(email, password) {
     tokenType: "Bearer",
     expiresAt: Date.now() + data.expiresIn * 1000,
     admin: {
-      id: data.admin.id,
       email: data.admin.email,
       name: data.admin.name,
       role: data.admin.role

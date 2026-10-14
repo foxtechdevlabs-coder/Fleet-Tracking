@@ -245,7 +245,7 @@ function Login() {
             </form>
 
             <div className="form-footer-compliance">
-              <p>Your credentials are sent to the FleetTrack authentication service over HTTPS.</p>
+              <p>Your credentials are sent only to the configured FleetTrack authentication service.</p>
             </div>
           </div>
         </section>

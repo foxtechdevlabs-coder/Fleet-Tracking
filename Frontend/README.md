@@ -28,9 +28,11 @@ npm run dev
 The login form sends `POST /api/v1/auth/login` with `{ "email", "password" }`.
 It accepts the documented `data.accessToken`, `data.tokenType`, and
 `data.expiresIn` fields along with the documented `data.admin` identity
-(`id`, `email`, `name`, and `role`). It keeps only those supported fields in
-`sessionStorage` until logout, tab close, or token expiry. The development
-server proxies `/api` to `http://localhost:3000`. For a deployed frontend, set
+(`email`, `name`, and `role`). It keeps only those user fields required by the
+interface (`email`, `name`, and `role`) together with the token and its
+expiry in `sessionStorage` until logout, tab close, or token expiry. The
+development server proxies `/api` to `http://localhost:3000`. For a deployed
+frontend, set
 `VITE_API_BASE_URL` to the API origin (for example, `https://api.example.com`).
 
 All application routes are protected. Logout clears the local session and

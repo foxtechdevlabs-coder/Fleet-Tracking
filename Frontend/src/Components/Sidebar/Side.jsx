@@ -10,8 +10,10 @@ import {
   Settings
 } from "lucide-react";
 import "./Side.css";
+import { useAuth } from "../../auth/AuthContext";
 
 function Side() {
+  const { admin } = useAuth();
   const menuItems = [
     {
       icon: <LayoutDashboard size={16} />,
@@ -77,9 +79,9 @@ function Side() {
       <div className="nodes-status">
         <div className="node-left">
           <span className="node-dot node-dot-preview"></span>
-          <span>UI Preview</span>
+          <span>Signed in as {admin.name}</span>
         </div>
-        <strong>API pending</strong>
+        <strong>Secure</strong>
       </div>
     </aside>
   );

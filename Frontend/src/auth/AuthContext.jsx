@@ -22,10 +22,12 @@ function readSession() {
     session.tokenType !== "Bearer" ||
     !Number.isFinite(session.expiresAt) ||
     session.expiresAt <= Date.now() ||
-    typeof session.admin?.id !== "string" ||
     typeof session.admin?.email !== "string" ||
+    !session.admin.email ||
     typeof session.admin?.name !== "string" ||
-    typeof session.admin?.role !== "string"
+    !session.admin.name.trim() ||
+    typeof session.admin?.role !== "string" ||
+    !session.admin.role
   ) {
     window.sessionStorage.removeItem(sessionStorageKey);
     return null;
@@ -59,9 +61,12 @@ export function AuthProvider({ children }) {
     },
     logout: async () => {
       const currentSession = session;
-      window.sessionStorage.removeItem(sessionStorageKey);
-      setSession(null);
-      if (currentSession) await revokeSession(currentSession);
+      try {
+        if (currentSession) await revokeSession(currentSession);
+      } finally {
+        window.sessionStorage.removeItem(sessionStorageKey);
+        setSession(null);
+      }
     }
   }), [session]);
 

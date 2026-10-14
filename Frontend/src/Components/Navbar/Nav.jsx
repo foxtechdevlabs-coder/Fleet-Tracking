@@ -46,27 +46,18 @@ function Nav() {
   const handleExit = async () => {
     if (isLoggingOut) return;
     setIsLoggingOut(true);
-    const logoutRequest = logout();
-    navigate("/login", {
-      replace: true,
-      state: { logoutNotice: "You have been signed out." }
-    });
+    let logoutState = { logoutNotice: "You have been signed out." };
 
     try {
-      await logoutRequest;
-    } catch (error) {
-      navigate("/login", {
-        replace: true,
-        state: {
-          logoutNotice: "You have been signed out on this device.",
-          logoutError: error instanceof Error
-            ? `The server could not revoke the session: ${error.message}`
-            : "The server could not revoke the session."
-        }
-      });
-    } finally {
-      setIsLoggingOut(false);
+      await logout();
+    } catch {
+      logoutState = {
+        logoutNotice: "You have been signed out on this device.",
+        logoutError: "The server could not confirm sign-out. Your local session has been cleared."
+      };
     }
+
+    navigate("/login", { replace: true, state: logoutState });
   };
 
   return (
