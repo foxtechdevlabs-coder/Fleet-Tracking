@@ -28,6 +28,23 @@ const port = optional(
     ),
 );
 
+// Requests per minute per client IP; unset or blank uses the default.
+const perMinute = (defaultValue: number) =>
+  optional(
+    z
+      .string()
+      .regex(/^\d+$/, "must be a whole number")
+      .transform(Number)
+      .pipe(
+        z
+          .number()
+          .int()
+          .min(1, "must be between 1 and 100000")
+          .max(100000, "must be between 1 and 100000"),
+      )
+      .default(defaultValue),
+  );
+
 const origin = z.string().refine(
   (value: string) => {
     try {
@@ -53,7 +70,9 @@ const origin = z.string().refine(
 const databaseSslModes = ["disable", "require", "verify-full"] as const;
 
 const schema = z.object({
-  NODE_ENV: optional(z.string().default("development")),
+  // Defaults to production so a server started without NODE_ENV gets the safe behavior
+  // (no SQL logging). Local development sets NODE_ENV=development in .env.
+  NODE_ENV: optional(z.string().default("production")),
   PORT: port,
   FRONTEND_ORIGINS: optional(
     z
@@ -93,6 +112,11 @@ const schema = z.object({
     "must be at least 32 bytes of random data",
   ),
 
+  // General limit for /api/* (except health and GPS ingest), and the separate GPS
+  // ingest limit, which is higher because devices/simulators post frequently.
+  API_RATE_LIMIT_PER_MINUTE: perMinute(300),
+  INGEST_RATE_LIMIT_PER_MINUTE: perMinute(1200),
+
   ADMIN_INITIAL_EMAIL: optional(z.string().email().max(255).optional()),
   ADMIN_INITIAL_PASSWORD: optional(z.string().min(12).max(128).optional()),
   ADMIN_INITIAL_NAME: optional(z.string().default("System Administrator")),
@@ -105,7 +129,8 @@ export function crossFieldProblems(source: NodeJS.ProcessEnv): string[] {
   const problems: string[] = [];
   const databaseUrl = read("DATABASE_URL");
   const databaseSsl = read("DATABASE_SSL") ?? "require";
-  const nodeEnv = read("NODE_ENV") ?? "development";
+  // Same default as the NODE_ENV schema field, so an unset NODE_ENV is checked as production.
+  const nodeEnv = read("NODE_ENV") ?? "production";
   const initialAdminEmail = read("ADMIN_INITIAL_EMAIL");
   const initialAdminPassword = read("ADMIN_INITIAL_PASSWORD");
 
@@ -190,6 +215,10 @@ export const env = {
   databaseSslCa: parsed.DATABASE_SSL_CA,
 
   jwtSecret: parsed.JWT_SECRET,
+
+  apiRateLimitPerMinute: parsed.API_RATE_LIMIT_PER_MINUTE,
+
+  ingestRateLimitPerMinute: parsed.INGEST_RATE_LIMIT_PER_MINUTE,
 
   adminInitialEmail: parsed.ADMIN_INITIAL_EMAIL,
 
