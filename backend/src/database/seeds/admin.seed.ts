@@ -67,7 +67,7 @@ export async function seedAdmin(ormInstance?: MikroORM): Promise<SeedResult> {
 
     const profile = toAdminProfile(admin);
     const message = `Primary administrator created successfully: ${profile.email} (${profile.role}).`;
-    console.log(`✅ ${message}`);
+    console.log(` ${message}`);
     return { seeded: true, message, admin: profile };
   } catch (error: unknown) {
     console.error("❌ Admin seeding error:", error);
