@@ -21,10 +21,9 @@ describe("API rate limiting", () => {
   });
 
   it("returns 429 once an IP exceeds the general API limit", async () => {
-    const app = createApp();
-    const statuses = await send(env.apiRateLimitPerMinute, () =>
-      request(app).get("/api/vehicles"),
-    );
+    const apiLimit = 3;
+    const app = createApp(undefined, { api: apiLimit, ingest: 8 });
+    const statuses = await send(apiLimit, () => request(app).get("/api/vehicles"));
     expect(new Set(statuses)).toEqual(new Set([401]));
 
     const blocked = await request(app).get("/api/v1/devices");
@@ -39,28 +38,29 @@ describe("API rate limiting", () => {
   });
 
   it("never limits health checks", async () => {
-    const app = createApp();
-    const statuses = await send(env.apiRateLimitPerMinute + 20, () =>
-      request(app).get("/api/v1/health"),
-    );
+    const app = createApp(undefined, { api: 2, ingest: 4 });
+    const statuses = await send(22, () => request(app).get("/api/v1/health"));
     expect(new Set(statuses)).toEqual(new Set([200]));
     expect((await request(app).get("/health")).status).toBe(200);
   });
 
   it("gives GPS ingest its own, higher limit", async () => {
-    const app = createApp();
+    const apiLimit = 3;
+    const ingestLimit = 5;
+    const app = createApp(undefined, {
+      api: apiLimit,
+      ingest: ingestLimit,
+    });
 
     // Exhaust the general limit: ingest keeps working.
-    await send(env.apiRateLimitPerMinute + 1, () =>
-      request(app).get("/api/vehicles"),
-    );
+    await send(apiLimit + 1, () => request(app).get("/api/vehicles"));
     expect((await request(app).get("/api/vehicles")).status).toBe(429);
     expect((await request(app).post("/api/v1/tracking/ingest")).status).toBe(
       401,
     );
 
     // Ingest is limited separately, at its own limit (one request already used above).
-    const statuses = await send(env.ingestRateLimitPerMinute - 1, () =>
+    const statuses = await send(ingestLimit - 1, () =>
       request(app).post("/api/v1/tracking/ingest"),
     );
     expect(new Set(statuses)).toEqual(new Set([401]));
@@ -70,11 +70,14 @@ describe("API rate limiting", () => {
   });
 
   it("keeps separate counters per app instance", async () => {
-    const first = createApp();
-    await send(env.apiRateLimitPerMinute + 1, () =>
+    const limits = { api: 2, ingest: 4 };
+    const first = createApp(undefined, limits);
+    await send(limits.api + 1, () =>
       request(first).get("/api/vehicles"),
     );
     expect((await request(first).get("/api/vehicles")).status).toBe(429);
-    expect((await request(createApp()).get("/api/vehicles")).status).toBe(401);
+    expect(
+      (await request(createApp(undefined, limits)).get("/api/vehicles")).status,
+    ).toBe(401);
   });
 });

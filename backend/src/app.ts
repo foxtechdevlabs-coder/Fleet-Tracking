@@ -12,7 +12,18 @@ import { env } from "./config/env.js";
 import { openApiSpec } from "./config/swagger.js";
 import { routes } from "./routes/index.js";
 
-export function createApp(orm?: MikroORM): Express {
+interface AppRateLimits {
+  api: number;
+  ingest: number;
+}
+
+export function createApp(
+  orm?: MikroORM,
+  rateLimits: AppRateLimits = {
+    api: env.apiRateLimitPerMinute,
+    ingest: env.ingestRateLimitPerMinute,
+  },
+): Express {
   const app = express();
 
   app.locals.orm = orm;
@@ -23,13 +34,13 @@ export function createApp(orm?: MikroORM): Express {
     "/api/v1/tracking/ingest",
     createRequestRateLimit({
       identifier: "ingest",
-      limitPerMinute: env.ingestRateLimitPerMinute,
+      limitPerMinute: rateLimits.ingest,
     }),
   );
   app.use(
     createRequestRateLimit({
       identifier: "api",
-      limitPerMinute: env.apiRateLimitPerMinute,
+      limitPerMinute: rateLimits.api,
       // Only /api/*; health checks and GPS ingest (limited above) are excluded.
       skip: (req) =>
         !req.path.startsWith("/api/") ||

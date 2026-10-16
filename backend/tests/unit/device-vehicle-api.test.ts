@@ -111,6 +111,14 @@ function createDatabase() {
           ) ?? null
       );
     },
+    async count(entity: EntityClass, where: Record<string, unknown>) {
+      queriedEntities.push(entity);
+      return (tables.get(entity) ?? []).filter((row) =>
+        Object.entries(where).every(
+          ([key, value]) => (row as Record<string, unknown>)[key] === value,
+        ),
+      ).length;
+    },
     async findAndCount(
       entity: EntityClass,
       _where: Record<string, unknown>,

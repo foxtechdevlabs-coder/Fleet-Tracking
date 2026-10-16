@@ -1,10 +1,7 @@
 // Device business rules and not-found handling.
 import type { EntityManager } from "@mikro-orm/postgresql";
 import { AppError } from "../../common/errors/app-error.js";
-import {
-  ConflictError,
-  NotFoundError,
-} from "../../common/errors/app-errors.js";
+import { NotFoundError } from "../../common/errors/app-errors.js";
 import {
   resolveDeviceForVehicle,
   resolveVehicleForDevice,
@@ -41,9 +38,10 @@ async function ensureIdentifierAvailable(
   identifier: string,
 ): Promise<void> {
   if (await repository.existsByIdentifier(em, identifier)) {
-    throw new ConflictError(
-      `A device with identifier '${identifier}' already exists`,
-      "DEVICE_IDENTIFIER_CONFLICT",
+    throw new AppError(
+      409,
+      "DEVICE_IDENTIFIER_EXISTS",
+      "Device identifier already exists",
     );
   }
 }
