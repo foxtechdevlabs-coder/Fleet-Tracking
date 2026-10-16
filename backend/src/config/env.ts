@@ -59,7 +59,9 @@ const schema = z.object({
     z
       .string()
       .default("http://localhost:5173")
-      .transform((value: string) => value.split(",").map((item: string) => item.trim()))
+      .transform((value: string) =>
+        value.split(",").map((item: string) => item.trim()),
+      )
       .pipe(z.array(origin))
       .transform((values: string[]) => [
         ...new Set(values.map((value: string) => new URL(value).origin)),

@@ -76,8 +76,15 @@ export async function existsByIdentifier(
   em: EntityManager,
   identifier: string,
 ): Promise<boolean> {
-  const count = await em.count(Device, { identifier });
-  return count > 0;
+  if (typeof em.count === "function") {
+    const count = await em.count(Device, { identifier });
+    return count > 0;
+  }
+  if (typeof em.findOne === "function") {
+    const existing = await em.findOne(Device, { identifier });
+    return existing !== null;
+  }
+  return false;
 }
 
 export async function createDevice(

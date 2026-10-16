@@ -42,8 +42,8 @@ async function ensureIdentifierAvailable(
 ): Promise<void> {
   if (await repository.existsByIdentifier(em, identifier)) {
     throw new ConflictError(
-      `A device with identifier '${identifier}' already exists`,
-      "DEVICE_IDENTIFIER_CONFLICT",
+      "Device identifier already exists",
+      "DEVICE_IDENTIFIER_EXISTS",
     );
   }
 }

@@ -464,4 +464,50 @@ describe("GET /api/v1/reports/locations", () => {
       log.mockRestore();
     }
   });
+
+  it("converts speed to mph when speedUnit=mph is requested", async () => {
+    const db = createDatabase();
+    const response = await getReport(
+      db.app,
+      db.auth,
+      `?deviceIdentifier=${db.device.identifier}&speedUnit=mph`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.data[0].speed).toBe(28.27); // 45.5 km/h * 0.621371 = 28.27 mph
+  });
+
+  it("formats recordedAt in target timezone when timezone is provided", async () => {
+    const db = createDatabase();
+    const response = await getReport(
+      db.app,
+      db.auth,
+      `?deviceIdentifier=${db.device.identifier}&timezone=Asia/Kolkata`,
+    );
+
+    expect(response.status).toBe(200);
+    // 2026-01-01T00:00:00.000Z in Asia/Kolkata is 2026-01-01T05:30:00.000+05:30
+    expect(response.body.data[0].recordedAt).toContain("+05:30");
+    expect(response.body.data[0].recordedAt).toContain("05:30:00");
+  });
+
+  it("rejects invalid speedUnit, invalid timezone, and invalid limit", async () => {
+    const db = createDatabase();
+
+    const invalidUnit = await getReport(db.app, db.auth, "?speedUnit=knots");
+    expect(invalidUnit.status).toBe(400);
+    expect(invalidUnit.body.code).toBe("VALIDATION_ERROR");
+
+    const invalidTz = await getReport(
+      db.app,
+      db.auth,
+      "?timezone=Invalid/Zone",
+    );
+    expect(invalidTz.status).toBe(400);
+    expect(invalidTz.body.code).toBe("VALIDATION_ERROR");
+
+    const invalidLimit = await getReport(db.app, db.auth, "?limit=99999");
+    expect(invalidLimit.status).toBe(400);
+    expect(invalidLimit.body.code).toBe("VALIDATION_ERROR");
+  });
 });
