@@ -234,12 +234,18 @@ describe("2. Transactional Creation API (createDeviceAndVehicle)", () => {
       });
 
     const em = {
+      count: mockCount,
       transactional: mockTransactional,
     } as unknown as EntityManager;
 
     const result = await createDeviceAndVehicle(
       em,
-      { plateNumber: "KA-01-MJ-5555" },
+      {
+        plateNumber: "KA-01-MJ-5555",
+        make: "Toyota",
+        model: "Innova",
+        year: 2024,
+      },
       { identifier: "IMEI-123456789" },
     );
 
@@ -275,6 +281,7 @@ describe("2. Transactional Creation API (createDeviceAndVehicle)", () => {
     } as unknown as EntityManager;
 
     const em = {
+      count: mockCount,
       transactional: jest
         .fn<<T>(cb: (em: EntityManager) => Promise<T>) => Promise<T>>()
         .mockImplementation(async (cb) => cb(txEm)),
@@ -282,13 +289,18 @@ describe("2. Transactional Creation API (createDeviceAndVehicle)", () => {
 
     const service = new DeviceVehicleService(em);
     await service.createDeviceAndVehicle(
-      { plateNumber: "KL-01-ZZ-0001" }, // make, model, year, status omitted
+      {
+        plateNumber: "KL-01-ZZ-0001",
+        make: "Toyota",
+        model: "Innova",
+        year: 2024,
+      }, // Optional status fields omitted.
       { identifier: "DEV-OPTIONAL" }, // status omitted
     );
 
-    expect(savedVehicleData.make).toBe("Unknown");
-    expect(savedVehicleData.model).toBe("Unknown");
-    expect(savedVehicleData.year).toBeDefined();
+    expect(savedVehicleData.make).toBe("Toyota");
+    expect(savedVehicleData.model).toBe("Innova");
+    expect(savedVehicleData.year).toBe(2024);
     expect(savedVehicleData.status).toBe("active");
     expect(savedDeviceData.status).toBe("active");
   });
@@ -314,6 +326,7 @@ describe("2. Transactional Creation API (createDeviceAndVehicle)", () => {
     } as unknown as EntityManager;
 
     const em = {
+      count: mockCount,
       transactional: jest
         .fn<<T>(cb: (em: EntityManager) => Promise<T>) => Promise<T>>()
         .mockImplementation(async (cb) => cb(txEm)),
@@ -322,7 +335,12 @@ describe("2. Transactional Creation API (createDeviceAndVehicle)", () => {
     await expect(
       createDeviceAndVehicle(
         em,
-        { plateNumber: "KL-01-FAIL" },
+        {
+          plateNumber: "KL-01-FAIL",
+          make: "Toyota",
+          model: "Innova",
+          year: 2024,
+        },
         { identifier: "DEV-FAIL" },
       ),
     ).rejects.toThrow("Simulated device insert failure");
@@ -343,6 +361,7 @@ describe("3. Service-Level Uniqueness & Validation (createDeviceAndVehicle)", ()
     } as unknown as EntityManager;
 
     const em = {
+      count: mockCount,
       transactional: jest
         .fn<<T>(cb: (em: EntityManager) => Promise<T>) => Promise<T>>()
         .mockImplementation(async (cb) => cb(txEm)),
@@ -351,7 +370,12 @@ describe("3. Service-Level Uniqueness & Validation (createDeviceAndVehicle)", ()
     await expect(
       createDeviceAndVehicle(
         em,
-        { plateNumber: "DUPLICATE-PLATE" },
+        {
+          plateNumber: "DUPLICATE-PLATE",
+          make: "Toyota",
+          model: "Innova",
+          year: 2024,
+        },
         { identifier: "UNIQUE-DEV" },
       ),
     ).rejects.toThrow(ConflictError);
@@ -359,7 +383,12 @@ describe("3. Service-Level Uniqueness & Validation (createDeviceAndVehicle)", ()
     await expect(
       createDeviceAndVehicle(
         em,
-        { plateNumber: "DUPLICATE-PLATE" },
+        {
+          plateNumber: "DUPLICATE-PLATE",
+          make: "Toyota",
+          model: "Innova",
+          year: 2024,
+        },
         { identifier: "UNIQUE-DEV" },
       ),
     ).rejects.toMatchObject({
@@ -381,6 +410,7 @@ describe("3. Service-Level Uniqueness & Validation (createDeviceAndVehicle)", ()
     } as unknown as EntityManager;
 
     const em = {
+      count: mockCount,
       transactional: jest
         .fn<<T>(cb: (em: EntityManager) => Promise<T>) => Promise<T>>()
         .mockImplementation(async (cb) => cb(txEm)),
@@ -389,7 +419,12 @@ describe("3. Service-Level Uniqueness & Validation (createDeviceAndVehicle)", ()
     await expect(
       createDeviceAndVehicle(
         em,
-        { plateNumber: "UNIQUE-PLATE" },
+        {
+          plateNumber: "UNIQUE-PLATE",
+          make: "Toyota",
+          model: "Innova",
+          year: 2024,
+        },
         { identifier: "DUPLICATE-DEV" },
       ),
     ).rejects.toThrow(ConflictError);
@@ -397,7 +432,12 @@ describe("3. Service-Level Uniqueness & Validation (createDeviceAndVehicle)", ()
     await expect(
       createDeviceAndVehicle(
         em,
-        { plateNumber: "UNIQUE-PLATE" },
+        {
+          plateNumber: "UNIQUE-PLATE",
+          make: "Toyota",
+          model: "Innova",
+          year: 2024,
+        },
         { identifier: "DUPLICATE-DEV" },
       ),
     ).rejects.toMatchObject({
