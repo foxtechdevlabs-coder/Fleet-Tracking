@@ -31,6 +31,10 @@ export const LocationHistorySchema = new EntitySchema<LocationHistory>({
       properties: ["vehicleId", "recordedAt"],
       name: "idx_location_history_vehicle_recorded",
     },
+    {
+      properties: ["deviceId", "recordedAt"],
+      name: "idx_location_history_device_recorded_at",
+    },
   ],
   properties: {
     id: {
