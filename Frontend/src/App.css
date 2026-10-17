@@ -150,6 +150,18 @@ button, input, select {
   border: 1px solid #bbf7d0;
 }
 
+.status-indicator.connection-error {
+  color: #991b1b;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.status-indicator.connection-pending {
+  color: #92400e;
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
 .pulse-dot {
   width: 8px;
   height: 8px;
@@ -689,6 +701,16 @@ button, input, select {
   color: #64748b;
 }
 
+.status-pill.maintenance {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-pill.unknown, .status-pill.unassigned {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
 /* MODAL OVERLAY (Controlled Creation Flow) */
 .modal-backdrop {
   position: fixed;
@@ -1123,5 +1145,203 @@ button, input, select {
   }
   .col-span-3 {
     grid-column: 1;
+  }
+}
+
+.breadcrumb {
+  color: #64748b;
+  font-size: 0.75rem;
+  margin-bottom: 5px;
+}
+
+.registry-count {
+  padding: 12px 18px;
+  border-top: 1px solid var(--color-border);
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.table-message {
+  padding: 32px 18px !important;
+  color: #64748b !important;
+  text-align: center;
+  line-height: 1.8;
+}
+
+.table-message strong {
+  color: #0f172a;
+}
+
+.text-button {
+  border: 0;
+  background: none;
+  color: #0369a1;
+  font: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.skeleton-row td span {
+  display: block;
+  height: 14px;
+  min-width: 72px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #e8edf2 25%, #f5f7f9 50%, #e8edf2 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  to { background-position: -200% 0; }
+}
+
+.row-actions, .drawer-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon-button {
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  color: #475569;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  color: #0369a1;
+  background: #f0f9ff;
+  border-color: #7dd3fc;
+}
+
+.icon-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+mark {
+  background: #fef08a;
+  color: inherit;
+}
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(10, 15, 30, 0.5);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.detail-drawer {
+  width: min(480px, 100%);
+  height: 100%;
+  overflow-y: auto;
+  background: #fff;
+  box-shadow: -12px 0 36px rgba(15, 23, 42, 0.18);
+  animation: drawer-in 0.2s ease-out;
+}
+
+@keyframes drawer-in {
+  from { transform: translateX(24px); opacity: 0.7; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.drawer-header {
+  padding: 22px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.drawer-header h2 {
+  font-size: 1.15rem;
+  overflow-wrap: anywhere;
+}
+
+.drawer-content {
+  padding: 8px 24px 28px;
+}
+
+.detail-section {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.detail-section h3 {
+  margin-bottom: 12px;
+  color: #0369a1;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.detail-section dl {
+  display: grid;
+  gap: 12px;
+}
+
+.detail-section dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 0.84rem;
+}
+
+.detail-section dt {
+  color: #64748b;
+}
+
+.detail-section dd {
+  color: #0f172a;
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.detail-skeleton {
+  display: grid;
+  gap: 18px;
+  padding-top: 20px;
+}
+
+.detail-skeleton span {
+  display: block;
+  height: 17px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #e8edf2 25%, #f5f7f9 50%, #e8edf2 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.detail-skeleton span:nth-child(3n) {
+  width: 72%;
+}
+
+.detail-load-error {
+  padding: 24px 0;
+  color: #991b1b;
+}
+
+@media (max-width: 600px) {
+  .registry-header-actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .search-box {
+    min-width: 0;
+  }
+
+  .registry-table th, .registry-table td {
+    padding: 11px 12px;
   }
 }
