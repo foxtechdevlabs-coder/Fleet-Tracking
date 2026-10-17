@@ -29,7 +29,7 @@ export function formatToDateTimeLocal(date: Date): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
-type PresetType = '24h' | 'today' | '7d' | '30d' | 'custom';
+type PresetType = 'today' | '24h' | '7d' | 'custom';
 
 export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
   vehicles,
@@ -66,21 +66,25 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
       }
     });
     vehicles.forEach(v => {
-      if (v.deviceId && !map.has(v.deviceId)) {
-        map.set(v.deviceId, { identifier: v.deviceId, vehicleId: v.id });
+      if (v.deviceId) {
+        const existing = map.get(v.deviceId);
+        map.set(v.deviceId, { identifier: v.deviceId, vehicleId: existing?.vehicleId || v.id });
       }
     });
-    return Array.from(map.values());
-  }, [devices, vehicles]);
+    return Array.from(map.values()).filter((device) => {
+      return !selectedVehicleId || device.vehicleId === selectedVehicleId;
+    });
+  }, [devices, selectedVehicleId, vehicles]);
 
   // When vehicle changes, auto-select bonded device if applicable
   const handleVehicleChange = (vehicleId: string) => {
     setSelectedVehicleId(vehicleId);
     if (vehicleId) {
       const match = vehicles.find(v => v.id === vehicleId);
-      if (match?.deviceId) {
-        setSelectedDeviceId(match.deviceId);
-      }
+      const associatedDevice = devices.find((device) => device.vehicleId === vehicleId);
+      setSelectedDeviceId(associatedDevice?.identifier || match?.deviceId || '');
+    } else {
+      setSelectedDeviceId('');
     }
   };
 
@@ -99,9 +103,6 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
         break;
       case '7d':
         fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case '30d':
-        fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
         break;
       default:
         return;
@@ -178,9 +179,9 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
             <Filter size={18} />
           </div>
           <div>
-            <h2 className="filter-card-title">Tracking Report Query Criteria</h2>
+            <h2 className="filter-card-title">Report Query Filters</h2>
             <p className="filter-card-subtitle">
-              Filter vehicle telemetry waypoints, sensor fixes, and location history across fleet units.
+              Choose a vehicle, device, and local date/time range.
             </p>
           </div>
         </div>
@@ -190,31 +191,31 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
           <span className="presets-label">Interval:</span>
           <button
             type="button"
-            className={`preset-chip ${activePreset === '24h' ? 'active' : ''}`}
-            onClick={() => handlePresetSelect('24h')}
-          >
-            Past 24 Hours
-          </button>
-          <button
-            type="button"
             className={`preset-chip ${activePreset === 'today' ? 'active' : ''}`}
             onClick={() => handlePresetSelect('today')}
           >
-            Today (00:00+)
+            Today
+          </button>
+          <button
+            type="button"
+            className={`preset-chip ${activePreset === '24h' ? 'active' : ''}`}
+            onClick={() => handlePresetSelect('24h')}
+          >
+            Last 24 Hours
           </button>
           <button
             type="button"
             className={`preset-chip ${activePreset === '7d' ? 'active' : ''}`}
             onClick={() => handlePresetSelect('7d')}
           >
-            Past 7 Days
+            Last 7 Days
           </button>
           <button
             type="button"
-            className={`preset-chip ${activePreset === '30d' ? 'active' : ''}`}
-            onClick={() => handlePresetSelect('30d')}
+            className={`preset-chip ${activePreset === 'custom' ? 'active' : ''}`}
+            onClick={() => setActivePreset('custom')}
           >
-            Past 30 Days
+            Custom Range
           </button>
         </div>
       </div>
@@ -240,6 +241,7 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
                     {v.plateNumber} ({v.make} {v.model}) [{v.id}]
                   </option>
                 ))}
+                {vehicles.length === 0 && <option value="" disabled>No vehicles available</option>}
               </select>
             </div>
           </div>
@@ -263,6 +265,7 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
                     {d.identifier} {d.vehicleId ? `(Bound to ${d.vehicleId})` : ''}
                   </option>
                 ))}
+                {availableDevices.length === 0 && <option value="" disabled>No devices available</option>}
               </select>
             </div>
           </div>
@@ -271,7 +274,7 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
           <div className="filter-field">
             <label htmlFor="report-date-from" className="filter-label">
               <Calendar size={14} />
-              <span>Date &amp; Time From</span>
+              <span>Date From</span>
               <span className="required-dot">*</span>
             </label>
             <div className="filter-control-wrap">
@@ -293,7 +296,7 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
           <div className="filter-field">
             <label htmlFor="report-date-to" className="filter-label">
               <Calendar size={14} />
-              <span>Date &amp; Time To</span>
+              <span>Date To</span>
               <span className="required-dot">*</span>
             </label>
             <div className="filter-control-wrap">
@@ -329,10 +332,10 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
               className="btn-secondary"
               onClick={handleResetFilters}
               disabled={isLoading}
-              title="Reset query filters to defaults"
+              title="Clear filters and restore the Last 24 Hours default"
             >
               <RotateCcw size={14} />
-              <span>Reset</span>
+              <span>Clear Filters</span>
             </button>
 
             <button

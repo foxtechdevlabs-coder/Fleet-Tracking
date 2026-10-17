@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Shield } from 'lucide-react';
+import { FileBarChart, Shield } from 'lucide-react';
 import { useFleet } from '../context/FleetContext';
 import { fetchDevices, fetchTrackingReport } from '../services/telemetryApi';
 import type { DeviceSummary, TrackingReportFilter, TrackingReportRecord } from '../types/telemetry';
@@ -66,6 +66,7 @@ export const ReportsPage: React.FC = () => {
     } else {
       setQueryState('loading');
     }
+    setRecords([]);
     setErrorMessage(null);
 
     try {
@@ -85,6 +86,7 @@ export const ReportsPage: React.FC = () => {
         return;
       }
       const msg = err instanceof Error ? err.message : 'Failed to query telemetry records from server.';
+      setRecords([]);
       setErrorMessage(msg);
       setQueryState('error');
     } finally {
@@ -116,13 +118,17 @@ export const ReportsPage: React.FC = () => {
       <div className="page-header">
         <div>
           <div className="header-tag">
-            <Shield size={13} />
-            <span>EXECUTIVE AUDIT &gt; TRACKING REPORTS</span>
+            <FileBarChart size={13} />
+            <span>FLEET OPERATIONS &gt; REPORTS</span>
           </div>
-          <h1 className="page-title">Fleet Tracking Reports &amp; Sensor Logs</h1>
+          <h1 className="page-title">Telemetry Tracking Reports</h1>
           <p className="page-subtitle">
-            Query historical telemetry waypoints, GPS position trails, and speed readings across fleet assets.
+            Review historical tracking and movement records from stored telemetry data.
           </p>
+        </div>
+        <div className="report-capabilities" aria-label="Report export availability">
+          <span className="report-capability available"><Shield size={13} /> Excel available</span>
+          <span className="report-capability unavailable"><Shield size={13} /> PDF unavailable</span>
         </div>
       </div>
 

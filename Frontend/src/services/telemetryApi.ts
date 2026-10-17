@@ -159,22 +159,8 @@ export async function fetchTrackingReport(
     });
 
     if (!res.ok) {
-      // Also try alternative endpoint /v1/reports/tracking if 404
       if (res.status === 404) {
-        const altUrl = `${API_BASE_URL}/v1/reports/tracking${queryString ? `?${queryString}` : ''}`;
-        try {
-          const altRes = await fetch(altUrl, {
-            method: 'GET',
-            headers: { 'Accept': 'application/json' },
-            signal,
-          });
-          if (altRes.ok) {
-            const altJson = await altRes.json();
-            return Array.isArray(altJson) ? altJson : altJson.data || [];
-          }
-        } catch {
-          // ignore fallback error and propagate main error
-        }
+        throw new Error('Historical tracking reports are not available: the backend does not expose GET /api/reports/tracking yet.');
       }
 
       let errorMessage = `HTTP ${res.status}: ${res.statusText || 'Failed to retrieve tracking report'}`;
@@ -188,8 +174,22 @@ export async function fetchTrackingReport(
       throw new Error(errorMessage);
     }
 
-    const json = await res.json();
-    return Array.isArray(json) ? json : json.data || [];
+    const json: unknown = await res.json();
+    if (Array.isArray(json)) return json as TrackingReportRecord[];
+
+    if (typeof json === 'object' && json !== null) {
+      if ('success' in json && json.success === false) {
+        const message = 'message' in json && typeof json.message === 'string'
+          ? json.message
+          : 'The report service rejected the request.';
+        throw new Error(message);
+      }
+      if ('data' in json && Array.isArray(json.data)) {
+        return json.data as TrackingReportRecord[];
+      }
+    }
+
+    throw new Error('The report service returned an unsupported response format.');
   } catch (error: unknown) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw error;

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Clock,
   Compass,
@@ -8,9 +8,8 @@ import {
   ChevronRight,
   Cpu,
   Gauge,
-  TrendingUp,
-  Activity,
-  Layers,
+  FileSpreadsheet,
+  FileText,
 } from 'lucide-react';
 import type { TrackingReportRecord } from '../../types/telemetry';
 
@@ -18,9 +17,11 @@ interface ReportResultsTableProps {
   records: TrackingReportRecord[];
 }
 
+const REPORT_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 function getHeadingDirection(deg: number): string {
   const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-  const index = Math.round(((deg % 360) / 45)) % 8;
+  const index = Math.round((((deg % 360) + 360) % 360) / 45) % 8;
   return directions[index];
 }
 
@@ -33,13 +34,15 @@ function formatTimestamp(isoOrDate: string): { dateStr: string; timeStr: string 
       year: 'numeric',
       month: 'short',
       day: '2-digit',
+      timeZone: REPORT_TIME_ZONE,
     });
     const timeStr = d.toLocaleTimeString('en-IN', {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
       hour12: false,
-    }) + ' IST';
+      timeZone: REPORT_TIME_ZONE,
+    });
 
     return { dateStr, timeStr };
   } catch {
@@ -51,6 +54,8 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportFeedback, setExportFeedback] = useState<string | null>(null);
 
   // Filter records based on table search input
   const filteredRecords = useMemo(() => {
@@ -76,109 +81,87 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
 
   // Pagination
   const totalPages = Math.max(1, Math.ceil(filteredRecords.length / rowsPerPage));
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
+
   const paginatedRecords = useMemo(() => {
     const start = (currentPage - 1) * rowsPerPage;
     return filteredRecords.slice(start, start + rowsPerPage);
   }, [filteredRecords, currentPage, rowsPerPage]);
 
-  // Statistics calculation for the summary strip
+  // Only metrics directly supported by the returned records are calculated.
   const stats = useMemo(() => {
-    const totalPoints = records.length;
     const speeds = records
       .map((r) => r.speed)
-      .filter((s): s is number => typeof s === 'number' && !isNaN(s));
-
-    const maxSpeed = speeds.length > 0 ? Math.max(...speeds) : 0;
-    const avgSpeed = speeds.length > 0 ? Math.round(speeds.reduce((a, b) => a + b, 0) / speeds.length) : 0;
-
-    const uniqueVehicles = new Set(
-      records.map((r) => r.plateNumber || r.vehicleId).filter(Boolean)
-    ).size;
+      .filter((speed): speed is number => typeof speed === 'number' && Number.isFinite(speed));
 
     return {
-      totalPoints,
-      maxSpeed,
-      avgSpeed,
-      uniqueVehicles: uniqueVehicles || 1,
+      maxSpeed: speeds.length > 0 ? Math.max(...speeds) : null,
     };
   }, [records]);
 
-  // CSV Export handler
-  const handleExportCSV = () => {
-    if (records.length === 0) return;
+  const handleExportExcel = async () => {
+    if (records.length === 0 || isExporting) return;
 
-    const headers = [
-      'Record ID',
-      'Date & Time (UTC/ISO)',
-      'Vehicle ID',
-      'Plate Number',
-      'Make & Model',
-      'Device ID',
-      'Latitude',
-      'Longitude',
-      'Speed (km/h)',
-      'Heading (deg)',
-      'Altitude (m)',
-    ];
-
-    const rows = records.map((r) => [
-      r.id || '',
-      r.recordedAt,
-      r.vehicleId || '',
-      r.plateNumber || '',
-      `"${(r.vehicleMake || '') + ' ' + (r.vehicleModel || '')}".trim()`,
-      r.deviceId || '',
-      typeof r.latitude === 'number' ? r.latitude : '',
-      typeof r.longitude === 'number' ? r.longitude : '',
-      r.speed != null ? r.speed : '',
-      r.heading != null ? r.heading : '',
-      r.altitude != null ? r.altitude : '',
-    ]);
-
-    const csvContent =
-      'data:text/csv;charset=utf-8,' +
-      [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `fleet-tracking-report-${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    setIsExporting(true);
+    setExportFeedback(null);
+    try {
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+      const XLSX = await import('xlsx');
+      const rows = records.map((record) => ({
+        'Date / Time': record.recordedAt,
+        Vehicle: record.plateNumber || record.vehicleId || '',
+        Device: record.deviceId || '',
+        Latitude: Number.isFinite(record.latitude) ? record.latitude : '',
+        Longitude: Number.isFinite(record.longitude) ? record.longitude : '',
+        'Speed (km/h)': record.speed ?? '',
+        'Heading (degrees)': record.heading ?? '',
+        'Altitude (m)': record.altitude ?? '',
+        Ignition: record.ignition ?? '',
+      }));
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Telemetry Records');
+      XLSX.writeFile(workbook, `fleet-tracking-report-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      setExportFeedback('Excel report downloaded.');
+    } catch {
+      setExportFeedback('The Excel report could not be created. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {/* Summary Metrics Strip */}
       <div className="report-meta-strip" aria-label="Report Metric Summary">
         <div className="report-meta-card">
           <div className="report-meta-icon" style={{ background: '#e0f2fe', color: '#0284c7' }}>
-            <Layers size={18} />
+            <FileSpreadsheet size={18} />
           </div>
           <div className="report-meta-info">
-            <span className="report-meta-label">Total Data Points</span>
-            <span className="report-meta-value">{stats.totalPoints.toLocaleString()}</span>
+            <span className="report-meta-label">Total GPS Logs</span>
+            <span className="report-meta-value">{records.length.toLocaleString()}</span>
           </div>
         </div>
 
         <div className="report-meta-card">
           <div className="report-meta-icon" style={{ background: '#ccfbf1', color: '#0d9488' }}>
-            <Activity size={18} />
+            <Compass size={18} />
           </div>
           <div className="report-meta-info">
-            <span className="report-meta-label">Tracked Vehicles</span>
-            <span className="report-meta-value">{stats.uniqueVehicles}</span>
+            <span className="report-meta-label">Total Distance</span>
+            <span className="report-meta-value">&mdash;</span>
           </div>
         </div>
 
         <div className="report-meta-card">
           <div className="report-meta-icon" style={{ background: '#fef3c7', color: '#d97706' }}>
-            <TrendingUp size={18} />
+            <Clock size={18} />
           </div>
           <div className="report-meta-info">
-            <span className="report-meta-label">Peak Velocity</span>
-            <span className="report-meta-value">{stats.maxSpeed} km/h</span>
+            <span className="report-meta-label">Operating Engine</span>
+            <span className="report-meta-value">&mdash;</span>
           </div>
         </div>
 
@@ -187,8 +170,20 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
             <Gauge size={18} />
           </div>
           <div className="report-meta-info">
-            <span className="report-meta-label">Average Speed</span>
-            <span className="report-meta-value">{stats.avgSpeed} km/h</span>
+            <span className="report-meta-label">Max Speed Recorded</span>
+            <span className="report-meta-value">
+              {stats.maxSpeed === null ? '\u2014' : `${stats.maxSpeed.toLocaleString()} km/h`}
+            </span>
+          </div>
+        </div>
+
+        <div className="report-meta-card">
+          <div className="report-meta-icon" style={{ background: '#fff7ed', color: '#c2410c' }}>
+            <Clock size={18} />
+          </div>
+          <div className="report-meta-info">
+            <span className="report-meta-label">Reporting Timezone</span>
+            <span className="report-meta-value report-timezone-value">{REPORT_TIME_ZONE}</span>
           </div>
         </div>
       </div>
@@ -198,9 +193,10 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
         {/* Table Header Controls */}
         <div className="watchlist-header">
           <div>
-            <h3 className="watchlist-title">Historical Telemetry Waypoints</h3>
+            <h3 className="watchlist-title">Raw Telemetry Records</h3>
             <p className="watchlist-subtitle">
-              Showing {filteredRecords.length} recorded waypoint{filteredRecords.length === 1 ? '' : 's'} matching query
+              {filteredRecords.length.toLocaleString()} returned record{filteredRecords.length === 1 ? '' : 's'}
+              {searchTerm.trim() ? ' matching this search' : ' in this report'}
             </p>
           </div>
 
@@ -219,26 +215,35 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
               />
             </div>
 
-            {/* Export CSV button */}
             <button
               type="button"
               className="export-btn"
-              onClick={handleExportCSV}
-              disabled={records.length === 0}
-              title="Export records to CSV spreadsheet"
+              onClick={() => void handleExportExcel()}
+              disabled={records.length === 0 || isExporting}
+              title="Export returned records to an Excel workbook"
             >
-              <Download size={14} />
-              <span>Export CSV</span>
+              {isExporting ? <Download size={14} className="spin-anim" /> : <FileSpreadsheet size={14} />}
+              <span>{isExporting ? 'Exporting...' : 'Export Excel'}</span>
+            </button>
+            <button type="button" className="export-btn" disabled title="PDF export is not implemented">
+              <FileText size={14} />
+              <span>Export PDF</span>
             </button>
           </div>
         </div>
+
+        {exportFeedback && (
+          <p className="report-export-feedback" role="status" aria-live="polite">
+            {exportFeedback}
+          </p>
+        )}
 
         {/* Responsive Table */}
         <div className="table-responsive">
           <table className="watchlist-table">
             <thead>
               <tr>
-                <th scope="col">Date / Time (IST)</th>
+                <th scope="col">Date / Time ({REPORT_TIME_ZONE})</th>
                 <th scope="col">Vehicle Info</th>
                 <th scope="col">Device Info</th>
                 <th scope="col">Latitude</th>
@@ -259,8 +264,8 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
               ) : (
                 paginatedRecords.map((r, idx) => {
                   const { dateStr, timeStr } = formatTimestamp(r.recordedAt);
-                  const isSpeedAvailable = r.speed != null && !isNaN(r.speed);
-                  const isHeadingAvailable = r.heading != null && !isNaN(r.heading);
+                  const isSpeedAvailable = typeof r.speed === 'number' && Number.isFinite(r.speed);
+                  const isHeadingAvailable = typeof r.heading === 'number' && Number.isFinite(r.heading);
 
                   return (
                     <tr key={r.id || `${r.recordedAt}-${idx}`}>
@@ -323,9 +328,9 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
 
                       {/* Latitude Column */}
                       <td>
-                        {typeof r.latitude === 'number' && !isNaN(r.latitude) ? (
+                        {typeof r.latitude === 'number' && Number.isFinite(r.latitude) ? (
                           <span className="coord-cell" title={`Latitude: ${r.latitude}`}>
-                            {r.latitude.toFixed(5)}° N
+                            {r.latitude.toFixed(5)}°
                           </span>
                         ) : (
                           <span style={{ color: '#94a3b8' }}>-</span>
@@ -334,9 +339,9 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
 
                       {/* Longitude Column */}
                       <td>
-                        {typeof r.longitude === 'number' && !isNaN(r.longitude) ? (
+                        {typeof r.longitude === 'number' && Number.isFinite(r.longitude) ? (
                           <span className="coord-cell" title={`Longitude: ${r.longitude}`}>
-                            {r.longitude.toFixed(5)}° E
+                            {r.longitude.toFixed(5)}°
                           </span>
                         ) : (
                           <span style={{ color: '#94a3b8' }}>-</span>
@@ -391,7 +396,7 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
             <strong>
               {Math.min(currentPage * rowsPerPage, filteredRecords.length)}
             </strong>{' '}
-            of <strong>{filteredRecords.length}</strong> waypoints
+            of <strong>{filteredRecords.length}</strong> returned records
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
