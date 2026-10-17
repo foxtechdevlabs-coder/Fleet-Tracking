@@ -34,22 +34,13 @@ function validateVehicleInput(data: CreateVehicleInput): void {
   if (typeof data.plateNumber !== "string" || !data.plateNumber.trim()) {
     throw new ValidationError("plateNumber", "Vehicle plateNumber is required");
   }
-  if (
-    data.make !== undefined &&
-    (typeof data.make !== "string" || !data.make.trim())
-  ) {
+  if (typeof data.make !== "string" || !data.make.trim()) {
     throw new ValidationError("make", "Vehicle make is required");
   }
-  if (
-    data.model !== undefined &&
-    (typeof data.model !== "string" || !data.model.trim())
-  ) {
+  if (typeof data.model !== "string" || !data.model.trim()) {
     throw new ValidationError("model", "Vehicle model is required");
   }
-  if (
-    data.year !== undefined &&
-    (data.year == null || !Number.isInteger(data.year) || data.year < 1900)
-  ) {
+  if (data.year == null || !Number.isInteger(data.year) || data.year < 1900) {
     throw new ValidationError(
       "year",
       "Vehicle year is required and must be a valid integer >= 1900",

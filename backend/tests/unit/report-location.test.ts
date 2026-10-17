@@ -7,6 +7,7 @@ import { Admin } from "../../src/modules/admins/admin.entity.js";
 import { createAccessToken } from "../../src/modules/auth/auth.service.js";
 import { RevokedToken } from "../../src/modules/auth/revoked-token.entity.js";
 import { Device } from "../../src/modules/devices/device.entity.js";
+import { parseLocationReportFilters } from "../../src/modules/reports/report.schema.js";
 import { LocationHistory } from "../../src/modules/tracking/location.entity.js";
 import { Vehicle } from "../../src/modules/vehicles/vehicle.entity.js";
 
@@ -509,5 +510,13 @@ describe("GET /api/v1/reports/locations", () => {
     const invalidLimit = await getReport(db.app, db.auth, "?limit=99999");
     expect(invalidLimit.status).toBe(400);
     expect(invalidLimit.body.code).toBe("VALIDATION_ERROR");
+  });
+});
+
+describe("report date filters and the GPS clock-skew limit", () => {
+  it("still accepts a future 'to' (the skew limit applies to ingestion only)", () => {
+    expect(
+      parseLocationReportFilters({ to: "2099-12-31T23:59:59.000Z" }).to,
+    ).toEqual(new Date("2099-12-31T23:59:59.000Z"));
   });
 });

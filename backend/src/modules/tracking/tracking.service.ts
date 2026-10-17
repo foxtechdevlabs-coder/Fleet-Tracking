@@ -66,7 +66,9 @@ export async function ingestLocation(
         device.id,
         input.recordedAt,
       );
-      if (existing) return { location: existing, duplicate: true };
+      if (existing) {
+        return { location: existing, duplicate: true, latestUpdated: false };
+      }
 
       const { deviceIdentifier: _deviceIdentifier, ...locationInput } = input;
       const location = await repository.createLocationHistory(
@@ -75,13 +77,13 @@ export async function ingestLocation(
         device.id,
         vehicle.id,
       );
-      await repository.upsertLatestLocation(
+      const latestUpdated = await repository.upsertLatestLocation(
         transactionalEm,
         locationInput,
         vehicle.id,
       );
 
-      return { location, duplicate: false };
+      return { location, duplicate: false, latestUpdated };
     });
   } catch (error) {
     if (
@@ -97,7 +99,9 @@ export async function ingestLocation(
         resolvedDeviceId,
         input.recordedAt,
       );
-      if (existing) return { location: existing, duplicate: true };
+      if (existing) {
+        return { location: existing, duplicate: true, latestUpdated: false };
+      }
     }
     throw error;
   }

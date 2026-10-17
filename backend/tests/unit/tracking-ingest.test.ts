@@ -31,9 +31,9 @@ interface TestEntityManager {
   create(entity: EntityClass, input: object): object;
   persist(entity: object): void;
   flush(): Promise<void>;
-  getConnection(): {
-    execute(query: string, parameters: unknown[]): Promise<unknown>;
-  };
+  execute(query: string, parameters: unknown[]): Promise<unknown>;
+  /** Set only on the EntityManager handed to a transactional() callback. */
+  inTransaction?: boolean;
 }
 
 function createFixture(options?: {
@@ -122,14 +122,16 @@ function createFixture(options?: {
           rows.map((row) => structuredClone(row)),
         ]),
       );
-      return callback(em).catch((error: unknown) => {
-        for (const [entity, rows] of snapshots) {
-          const currentRows = tables.get(entity);
-          currentRows?.splice(0, currentRows.length, ...rows);
-        }
-        pending = [];
-        throw error;
-      });
+      return callback({ ...em, inTransaction: true }).catch(
+        (error: unknown) => {
+          for (const [entity, rows] of snapshots) {
+            const currentRows = tables.get(entity);
+            currentRows?.splice(0, currentRows.length, ...rows);
+          }
+          pending = [];
+          throw error;
+        },
+      );
     },
     create(entity: EntityClass, input: object) {
       return Object.assign(Object.create(entity.prototype), {
@@ -145,56 +147,64 @@ function createFixture(options?: {
       tables.get(LocationHistory)?.push(...pending);
       pending = [];
     },
-    getConnection() {
-      return {
-        async execute(query: string, parameters: unknown[]) {
-          if (failLatestUpsert)
-            throw new Error("private latest-position failure");
-          latestPositionUpserts += 1;
-          expect(query).toContain(
-            '"latest_locations"."recorded_at" < EXCLUDED."recorded_at"',
-          );
-          const [vehicleId, latitude, longitude, speed, heading, recordedAt] =
-            parameters as [
-              string,
-              number,
-              number,
-              number | null,
-              number | null,
-              Date,
-            ];
-          const rows = tables.get(LatestLocation);
-          const existing = rows?.find(
-            (row) => (row as Record<string, unknown>).vehicleId === vehicleId,
-          ) as LatestLocation | undefined;
-          if (existing) {
-            if (recordedAt > existing.recordedAt) {
-              Object.assign(existing, {
-                latitude,
-                longitude,
-                speed,
-                heading,
-                recordedAt,
-                updatedAt: new Date(),
-              });
-            }
-            return [];
+    async execute(
+      this: TestEntityManager,
+      query: string,
+      parameters: unknown[],
+    ) {
+      // The live-position upsert must join the surrounding transaction (risk R1).
+      if (!this.inTransaction) {
+        throw new Error("latest position upsert ran outside the transaction");
+      }
+      {
+        if (failLatestUpsert)
+          throw new Error("private latest-position failure");
+        latestPositionUpserts += 1;
+        expect(query).toContain(
+          '"latest_locations"."recorded_at" < EXCLUDED."recorded_at"',
+        );
+        expect(query).toContain('RETURNING "vehicle_id"');
+        const [vehicleId, latitude, longitude, speed, heading, recordedAt] =
+          parameters as [
+            string,
+            number,
+            number,
+            number | null,
+            number | null,
+            Date,
+          ];
+        const rows = tables.get(LatestLocation);
+        const existing = rows?.find(
+          (row) => (row as Record<string, unknown>).vehicleId === vehicleId,
+        ) as LatestLocation | undefined;
+        if (existing) {
+          if (recordedAt > existing.recordedAt) {
+            Object.assign(existing, {
+              latitude,
+              longitude,
+              speed,
+              heading,
+              recordedAt,
+              updatedAt: new Date(),
+            });
+            return [{ vehicle_id: vehicleId }];
           }
+          return [];
+        }
 
-          const created = Object.assign(new LatestLocation(), {
-            id: randomUUID(),
-            vehicleId,
-            latitude,
-            longitude,
-            speed,
-            heading,
-            recordedAt,
-            updatedAt: new Date(),
-          });
-          rows?.push(created);
-          return [created];
-        },
-      };
+        const created = Object.assign(new LatestLocation(), {
+          id: randomUUID(),
+          vehicleId,
+          latitude,
+          longitude,
+          speed,
+          heading,
+          recordedAt,
+          updatedAt: new Date(),
+        });
+        rows?.push(created);
+        return [{ vehicle_id: vehicleId }];
+      }
     },
   };
   const app = createApp({ em: { fork: () => em } } as never);
@@ -204,8 +214,9 @@ function createFixture(options?: {
     auth: `Bearer ${createAccessToken(admin).token}`,
     device,
     vehicle,
-    storedLocations: tables.get(LocationHistory) ?? [],
-    livePositions: tables.get(LatestLocation) ?? [],
+    storedLocations: (tables.get(LocationHistory) ?? []) as LocationHistory[],
+    // The fake stores LatestLocation instances (see execute() above).
+    livePositions: (tables.get(LatestLocation) ?? []) as LatestLocation[],
     initialLivePosition: structuredClone(initialLivePosition),
     findOneCalls,
     get latestPositionUpserts() {
@@ -594,5 +605,71 @@ describe("POST /api/v1/tracking/ingest", () => {
     });
     expect(fixture.storedLocations).toHaveLength(0);
     expect(fixture.livePositions).toEqual([fixture.initialLivePosition]);
+  });
+});
+
+describe("recordedAt clock-skew limit (GPS_MAX_CLOCK_SKEW_SECONDS, default 300 s)", () => {
+  const now = new Date("2026-10-16T12:00:00.000Z");
+  const at = (offsetMs: number) =>
+    new Date(now.getTime() + offsetMs).toISOString();
+  const parse = (recordedAt: string) =>
+    parseTrackingLocation({ ...validLocation, recordedAt }, now);
+
+  it("accepts readings up to the allowed skew ahead of the server clock", () => {
+    expect(parse(at(0)).recordedAt.toISOString()).toBe(at(0));
+    expect(parse(at(300_000)).recordedAt.toISOString()).toBe(at(300_000));
+  });
+
+  it("rejects readings further in the future, including via timezone offsets", () => {
+    for (const recordedAt of [
+      at(300_001),
+      at(24 * 60 * 60 * 1000),
+      "2099-01-01T00:00:00.000Z",
+      // 17:36+05:30 is 12:06Z: six minutes ahead.
+      "2026-10-16T17:36:00+05:30",
+    ]) {
+      expect(() => parse(recordedAt)).toThrow(
+        "recordedAt must not be more than 300 seconds ahead of the server time",
+      );
+    }
+  });
+
+  it("keeps accepting delayed and old readings", () => {
+    expect(parse(at(-60 * 60 * 1000)).recordedAt.toISOString()).toBe(
+      at(-60 * 60 * 1000),
+    );
+    expect(parse("2000-01-01T00:00:00.000Z").recordedAt.toISOString()).toBe(
+      "2000-01-01T00:00:00.000Z",
+    );
+  });
+
+  it("rejects a future reading over HTTP without storing it or moving the live position", async () => {
+    const fixture = createFixture();
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+    const response = await request(fixture.app)
+      .post("/api/v1/tracking/ingest")
+      .set("Authorization", fixture.auth)
+      .send({ ...validLocation, recordedAt: tomorrow });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      success: false,
+      message:
+        "recordedAt must not be more than 300 seconds ahead of the server time",
+      code: "VALIDATION_ERROR",
+    });
+    expect(fixture.storedLocations).toHaveLength(0);
+    expect(fixture.livePositions).toEqual([fixture.initialLivePosition]);
+    expect(fixture.latestPositionUpserts).toBe(0);
+
+    // A correct, current reading still advances the marker afterwards.
+    const current = new Date().toISOString();
+    const accepted = await request(fixture.app)
+      .post("/api/v1/tracking/ingest")
+      .set("Authorization", fixture.auth)
+      .send({ ...validLocation, recordedAt: current });
+    expect(accepted.status).toBe(201);
+    expect(fixture.livePositions[0].recordedAt.toISOString()).toBe(current);
   });
 });
