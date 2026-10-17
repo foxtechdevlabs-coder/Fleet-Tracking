@@ -23,7 +23,9 @@ describe("API rate limiting", () => {
   it("returns 429 once an IP exceeds the general API limit", async () => {
     const apiLimit = 3;
     const app = createApp(undefined, { api: apiLimit, ingest: 8 });
-    const statuses = await send(apiLimit, () => request(app).get("/api/vehicles"));
+    const statuses = await send(apiLimit, () =>
+      request(app).get("/api/vehicles"),
+    );
     expect(new Set(statuses)).toEqual(new Set([401]));
 
     const blocked = await request(app).get("/api/v1/devices");
@@ -72,9 +74,7 @@ describe("API rate limiting", () => {
   it("keeps separate counters per app instance", async () => {
     const limits = { api: 2, ingest: 4 };
     const first = createApp(undefined, limits);
-    await send(limits.api + 1, () =>
-      request(first).get("/api/vehicles"),
-    );
+    await send(limits.api + 1, () => request(first).get("/api/vehicles"));
     expect((await request(first).get("/api/vehicles")).status).toBe(429);
     expect(
       (await request(createApp(undefined, limits)).get("/api/vehicles")).status,

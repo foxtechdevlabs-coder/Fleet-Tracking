@@ -1,7 +1,10 @@
 // Transactional device + vehicle combined creation.
 import { RequestContext } from "@mikro-orm/core";
 import type { EntityManager } from "@mikro-orm/postgresql";
-import { ConflictError, ValidationError } from "../../common/errors/app-errors.js";
+import {
+  ConflictError,
+  ValidationError,
+} from "../../common/errors/app-errors.js";
 import type { Vehicle } from "../vehicles/vehicle.entity.js";
 import * as vehicleRepository from "../vehicles/vehicle.repository.js";
 import type { CreateVehicleInput } from "../vehicles/vehicle.types.js";

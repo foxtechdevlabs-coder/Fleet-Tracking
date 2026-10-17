@@ -45,6 +45,17 @@ const perMinute = (defaultValue: number) =>
       .default(defaultValue),
   );
 
+// Whole number of seconds within [0, 86400]; unset or blank uses the default.
+const seconds = (defaultValue: number) =>
+  optional(
+    z
+      .string()
+      .regex(/^\d+$/, "must be a whole number of seconds")
+      .transform(Number)
+      .pipe(z.number().int().max(86400, "must be between 0 and 86400 seconds"))
+      .default(defaultValue),
+  );
+
 const origin = z.string().refine(
   (value: string) => {
     try {
@@ -116,6 +127,17 @@ const schema = z.object({
   // ingest limit, which is higher because devices/simulators post frequently.
   API_RATE_LIMIT_PER_MINUTE: perMinute(300),
   INGEST_RATE_LIMIT_PER_MINUTE: perMinute(1200),
+
+  // How far a GPS reading's recordedAt may be ahead of the server clock (device clock
+  // skew). Later timestamps are rejected so one bad clock cannot pin a vehicle's live
+  // position in the future. Past (delayed) readings are not limited.
+  GPS_MAX_CLOCK_SKEW_SECONDS: seconds(300),
+
+  // Socket.IO limits (per process). Connection limits are per client IP and checked
+  // before authentication; the subscription limit is per socket.
+  SOCKET_CONNECTIONS_PER_MINUTE: perMinute(30),
+  SOCKET_MAX_CONNECTIONS_PER_IP: perMinute(20),
+  SOCKET_SUBSCRIPTIONS_PER_MINUTE: perMinute(30),
 
   ADMIN_INITIAL_EMAIL: optional(z.string().email().max(255).optional()),
   ADMIN_INITIAL_PASSWORD: optional(z.string().min(12).max(128).optional()),
@@ -219,6 +241,14 @@ export const env = {
   apiRateLimitPerMinute: parsed.API_RATE_LIMIT_PER_MINUTE,
 
   ingestRateLimitPerMinute: parsed.INGEST_RATE_LIMIT_PER_MINUTE,
+
+  gpsMaxClockSkewSeconds: parsed.GPS_MAX_CLOCK_SKEW_SECONDS,
+
+  socketConnectionsPerMinute: parsed.SOCKET_CONNECTIONS_PER_MINUTE,
+
+  socketMaxConnectionsPerIp: parsed.SOCKET_MAX_CONNECTIONS_PER_IP,
+
+  socketSubscriptionsPerMinute: parsed.SOCKET_SUBSCRIPTIONS_PER_MINUTE,
 
   adminInitialEmail: parsed.ADMIN_INITIAL_EMAIL,
 
