@@ -6,7 +6,7 @@ config({ quiet: true });
 
 // Unset, empty and whitespace-only values all count as "not provided".
 const optional = <T extends z.ZodType>(schema: T) =>
-  z.preprocess((value) => {
+  z.preprocess((value: unknown) => {
     if (typeof value !== "string") return value;
     const trimmed = value.trim();
     return trimmed === "" ? undefined : trimmed;
@@ -28,8 +28,25 @@ const port = optional(
     ),
 );
 
+// Requests per minute per client IP; unset or blank uses the default.
+const perMinute = (defaultValue: number) =>
+  optional(
+    z
+      .string()
+      .regex(/^\d+$/, "must be a whole number")
+      .transform(Number)
+      .pipe(
+        z
+          .number()
+          .int()
+          .min(1, "must be between 1 and 100000")
+          .max(100000, "must be between 1 and 100000"),
+      )
+      .default(defaultValue),
+  );
+
 const origin = z.string().refine(
-  (value) => {
+  (value: string) => {
     try {
       const parsed = new URL(value);
       return (
@@ -45,7 +62,7 @@ const origin = z.string().refine(
     }
   },
   {
-    error: (issue) =>
+    error: (issue: { input: unknown }) =>
       `"${issue.input}" is not an HTTP(S) origin (e.g. http://localhost:5173)`,
   },
 );
@@ -53,16 +70,20 @@ const origin = z.string().refine(
 const databaseSslModes = ["disable", "require", "verify-full"] as const;
 
 const schema = z.object({
-  NODE_ENV: optional(z.string().default("development")),
+  // Defaults to production so a server started without NODE_ENV gets the safe behavior
+  // (no SQL logging). Local development sets NODE_ENV=development in .env.
+  NODE_ENV: optional(z.string().default("production")),
   PORT: port,
   FRONTEND_ORIGINS: optional(
     z
       .string()
       .default("http://localhost:5173")
-      .transform((value) => value.split(",").map((item) => item.trim()))
+      .transform((value: string) =>
+        value.split(",").map((item: string) => item.trim()),
+      )
       .pipe(z.array(origin))
-      .transform((values) => [
-        ...new Set(values.map((value) => new URL(value).origin)),
+      .transform((values: string[]) => [
+        ...new Set(values.map((value: string) => new URL(value).origin)),
       ]),
   ),
 
@@ -87,22 +108,41 @@ const schema = z.object({
   DATABASE_SSL_CA: optional(z.string().optional()),
 
   JWT_SECRET: requiredString.refine(
-    (value) => Buffer.byteLength(value, "utf8") >= 32,
+    (value: string) => Buffer.byteLength(value, "utf8") >= 32,
     "must be at least 32 bytes of random data",
   ),
 
-  ADMIN_INITIAL_EMAIL: optional(z.string().default("admin@example.com")),
-  ADMIN_INITIAL_PASSWORD: optional(z.string().default("Admin123!")),
+  // General limit for /api/* (except health and GPS ingest), and the separate GPS
+  // ingest limit, which is higher because devices/simulators post frequently.
+  API_RATE_LIMIT_PER_MINUTE: perMinute(300),
+  INGEST_RATE_LIMIT_PER_MINUTE: perMinute(1200),
+
+  ADMIN_INITIAL_EMAIL: optional(z.string().email().max(255).optional()),
+  ADMIN_INITIAL_PASSWORD: optional(z.string().min(12).max(128).optional()),
   ADMIN_INITIAL_NAME: optional(z.string().default("System Administrator")),
 });
 
 // Rules that depend on more than one variable. They run on the raw values (not the
 // schema output) so they are reported even when an unrelated variable is invalid.
-function crossFieldProblems(source: NodeJS.ProcessEnv): string[] {
+export function crossFieldProblems(source: NodeJS.ProcessEnv): string[] {
   const read = (name: string) => source[name]?.trim() || undefined;
   const problems: string[] = [];
   const databaseUrl = read("DATABASE_URL");
   const databaseSsl = read("DATABASE_SSL") ?? "require";
+  // Same default as the NODE_ENV schema field, so an unset NODE_ENV is checked as production.
+  const nodeEnv = read("NODE_ENV") ?? "production";
+  const initialAdminEmail = read("ADMIN_INITIAL_EMAIL");
+  const initialAdminPassword = read("ADMIN_INITIAL_PASSWORD");
+
+  if (nodeEnv === "production" && databaseSsl !== "verify-full") {
+    problems.push("DATABASE_SSL: must be verify-full in production");
+  }
+
+  if (Boolean(initialAdminEmail) !== Boolean(initialAdminPassword)) {
+    problems.push(
+      "ADMIN_INITIAL_EMAIL and ADMIN_INITIAL_PASSWORD must be set together",
+    );
+  }
 
   if (!databaseUrl) {
     for (const name of [
@@ -175,6 +215,10 @@ export const env = {
   databaseSslCa: parsed.DATABASE_SSL_CA,
 
   jwtSecret: parsed.JWT_SECRET,
+
+  apiRateLimitPerMinute: parsed.API_RATE_LIMIT_PER_MINUTE,
+
+  ingestRateLimitPerMinute: parsed.INGEST_RATE_LIMIT_PER_MINUTE,
 
   adminInitialEmail: parsed.ADMIN_INITIAL_EMAIL,
 
