@@ -1,9 +1,10 @@
 // HTTP server bootstrap.
-import type { Server } from "node:http";
+import { createServer } from "node:http";
 import { MikroORM } from "@mikro-orm/postgresql";
 import { createApp } from "./app.js";
 import { env } from "./config/env.js";
 import mikroOrmConfig from "./database/mikro-orm.config.js";
+import { createSocketServer } from "./modules/realtime/socket.server.js";
 
 async function bootstrap(): Promise<void> {
   const orm = await MikroORM.init(mikroOrmConfig);
@@ -19,16 +20,21 @@ async function bootstrap(): Promise<void> {
   }
   console.log("Database connected");
 
+  // One HTTP server serves both Express and Socket.IO (path /socket.io) on env.port.
   const app = createApp(orm);
-  const server = await new Promise<Server>((resolve, reject) => {
-    const httpServer = app.listen(env.port, (error) => {
-      if (error) {
-        reject(error);
-      } else {
-        resolve(httpServer);
-      }
+  const httpServer = createServer(app);
+  const { io, realtime } = createSocketServer(httpServer, () => orm.em.fork());
+  app.locals.realtime = realtime;
+
+  await new Promise<void>((resolve, reject) => {
+    // http.Server reports listen failures (e.g. EADDRINUSE) as an "error" event.
+    httpServer.once("error", reject);
+    httpServer.listen(env.port, () => {
+      httpServer.off("error", reject);
+      resolve();
     });
   }).catch(async (error: unknown) => {
+    io.close();
     await orm.close(true);
     throw error;
   });
@@ -36,7 +42,8 @@ async function bootstrap(): Promise<void> {
 
   const shutdown = (signal: string) => {
     console.log(`${signal} received, shutting down`);
-    server.close(async () => {
+    // Disconnects all sockets, then closes the HTTP server.
+    io.close(async () => {
       await orm.close();
       process.exit(0);
     });

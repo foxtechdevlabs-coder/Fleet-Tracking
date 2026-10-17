@@ -4,6 +4,7 @@ import type { EntityManager } from "@mikro-orm/postgresql";
 import {
   ConflictError,
   NotFoundError,
+  ValidationError,
 } from "../../src/common/errors/app-errors.js";
 import { Device } from "../../src/modules/devices/device.entity.js";
 import {
@@ -194,6 +195,11 @@ describe("1. Combined Search & List Query (listDevicesWithVehicles)", () => {
   });
 });
 
+// make, model and year are required by createDeviceAndVehicle() (validateVehicleInput).
+function vehicleInput(plateNumber: string) {
+  return { plateNumber, make: "Toyota", model: "Innova", year: 2024 };
+}
+
 describe("2. Transactional Creation API (createDeviceAndVehicle)", () => {
   it("saves Vehicle first, assigns vehicle.id to device.vehicleId, and commits transaction", async () => {
     const createdVehicle = createMockVehicle({
@@ -254,7 +260,7 @@ describe("2. Transactional Creation API (createDeviceAndVehicle)", () => {
     expect(result.device.vehicleId).toBe(createdVehicle.id);
   });
 
-  it("ensures omitted optional fields fall back gracefully without crashing", async () => {
+  it("defaults omitted optional status fields to active", async () => {
     const savedVehicleData: Partial<Vehicle> = {};
     const savedDeviceData: Partial<Device> = {};
 
@@ -445,6 +451,28 @@ describe("3. Service-Level Uniqueness & Validation (createDeviceAndVehicle)", ()
       status: 409,
     });
   });
+});
+
+describe("3b. Required vehicle fields (createDeviceAndVehicle)", () => {
+  it.each(["make", "model", "year"] as const)(
+    "rejects a missing %s with ValidationError before any database access",
+    async (field) => {
+      const count = jest.fn();
+      const transactional = jest.fn();
+      const em = { count, transactional } as unknown as EntityManager;
+      const vehicle: Record<string, unknown> = vehicleInput("KL-02-AA-0002");
+      delete vehicle[field];
+
+      await expect(
+        createDeviceAndVehicle(em, vehicle as never, { identifier: "DEV-X" }),
+      ).rejects.toMatchObject({ status: 422, field });
+      await expect(
+        createDeviceAndVehicle(em, vehicle as never, { identifier: "DEV-X" }),
+      ).rejects.toThrow(ValidationError);
+      expect(count).not.toHaveBeenCalled();
+      expect(transactional).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("4. Tracking Resolution & Fixes", () => {

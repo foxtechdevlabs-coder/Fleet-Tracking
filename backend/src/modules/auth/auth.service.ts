@@ -9,8 +9,10 @@ import {
 } from "node:crypto";
 import { promisify } from "node:util";
 import type { EntityManager } from "@mikro-orm/postgresql";
+import type { AuthenticatedAdmin } from "../../common/types/auth.types.js";
 import { env } from "../../config/env.js";
 import { Admin } from "../admins/admin.entity.js";
+import { RevokedToken } from "./revoked-token.entity.js";
 
 const scrypt = promisify(scryptCallback);
 const tokenLifetimeSeconds = 60 * 60;
@@ -160,4 +162,36 @@ export async function authenticateAdmin(
   }
 
   return admin;
+}
+
+/**
+ * Validates a bearer access token and loads the administrator it belongs to.
+ * Shared by the HTTP middleware (requireAdmin) and the Socket.IO handshake.
+ *
+ * Returns undefined when the signature, expiry or claims are invalid, the admin is
+ * missing or inactive, or the token was revoked by logout. The database is only
+ * touched (via `getEm`) after the token itself has been verified.
+ */
+export async function authenticateAccessToken(
+  getEm: () => EntityManager,
+  token: string,
+): Promise<AuthenticatedAdmin | undefined> {
+  const claims = verifyAccessToken(token);
+  if (!claims) return undefined;
+
+  const em = getEm();
+  const [admin, revoked] = await Promise.all([
+    em.findOne(Admin, { id: claims.sub }),
+    em.findOne(RevokedToken, { id: claims.jti }),
+  ]);
+  if (!admin?.isActive || revoked) return undefined;
+
+  return {
+    id: admin.id,
+    email: admin.email,
+    name: admin.name,
+    role: admin.role,
+    tokenId: claims.jti,
+    expiresAt: new Date(claims.exp * 1000),
+  };
 }

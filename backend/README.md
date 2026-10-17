@@ -87,6 +87,13 @@ inclusive `from`/`to` timestamps, an existing `vehicleId`, and/or a registered
 `deviceIdentifier`; supplied filters are combined in the database query.
 
 Run `pnpm run typecheck`, `pnpm test`, and `pnpm run lint` to validate changes.
+`pnpm test` needs no database. PostgreSQL integration tests (real SQL and
+transactions, `tests/integration`) are opt-in: point `TEST_DATABASE_URL` at a
+**local** PostgreSQL server whose user can create databases and run
+`pnpm run test:integration`, e.g.
+`TEST_DATABASE_URL=postgresql://postgres@127.0.0.1:5432/postgres pnpm run test:integration`.
+Each run creates and drops its own `fleet_it_*` database; non-local hosts are
+refused, and the shared Supabase database is never used.
 
 ## Structure
 
