@@ -212,9 +212,11 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
   const [copiedCoords, setCopiedCoords] = useState(false);
   const [copiedDeviceId, setCopiedDeviceId] = useState(false);
 
-  // Resolve target vehicle: explicit prop or selectedVehicleId from context
+  // Resolve target vehicle: explicit prop takes priority over context selection.
+  // Early-exit when propVehicle is provided (even if null) to avoid subscribing to
+  // the full vehicles array on every telemetry refresh when it isn't needed.
   const activeVehicle: Vehicle | null = useMemo(() => {
-    if (propVehicle) return propVehicle;
+    if (propVehicle !== undefined) return propVehicle ?? null;
     if (selectedVehicleId) {
       return vehicles.find((v) => v.id === selectedVehicleId) ?? null;
     }

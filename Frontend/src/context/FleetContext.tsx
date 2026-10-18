@@ -81,7 +81,9 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Ability for operators to bond / register a new device & vehicle on the fly
   const addVehicle = useCallback((data: Partial<Vehicle> & { plateNumber: string; make: string; model: string }): Vehicle => {
-    const newId = data.id || `VH-${String(vehicles.length + 1).padStart(3, '0')}`;
+    // Use Date.now() for unique IDs to avoid collisions when multiple vehicles are added quickly
+    // and to prevent the callback from needing to close over vehicles.length.
+    const newId = data.id || `VH-${Date.now()}`;
     const newVehicle: Vehicle = {
       id: newId,
       plateNumber: data.plateNumber.toUpperCase(),
@@ -125,7 +127,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setLastIngestionTime(new Date());
 
     return newVehicle;
-  }, [vehicles.length]);
+  }, []);
 
   const triggerEmergencyBroadcast = useCallback((message: string) => {
     setEmergencyBroadcasts(prev => [message, ...prev]);

@@ -25,6 +25,15 @@ export const LiveTrackingView: React.FC = () => {
   const [isDetailsOpen, setIsDetailsOpen] = useState(true);
   const [centerTrigger, setCenterTrigger] = useState<number>(0);
 
+  // Auto-refresh telemetry every 5 seconds — matches the "Auto-sync 5s" footer indicator.
+  // Uses refreshTelemetry (which sets isRefreshing, not isLoading) so it runs silently in the background.
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      void refreshTelemetry();
+    }, 5000);
+    return () => clearInterval(intervalId);
+  }, [refreshTelemetry]);
+
   const filteredVehicles = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
 

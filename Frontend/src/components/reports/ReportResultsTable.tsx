@@ -262,8 +262,10 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Telemetry Records');
       XLSX.writeFile(workbook, `${getFilenameBase()}.xlsx`);
       setExportFeedback('Excel report downloaded successfully.');
+      setTimeout(() => setExportFeedback(null), 4000);
     } catch {
       setExportFeedback('The Excel report could not be created. Please try again.');
+      setTimeout(() => setExportFeedback(null), 6000);
     } finally {
       setIsExporting(false);
     }
@@ -323,7 +325,9 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
       }
 
       const csvContent = csvRows.join('\r\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      // RFC 4180 CSV with UTF-8 BOM so Excel on Windows opens non-ASCII chars correctly.
+      const BOM = '\uFEFF';
+      const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -333,8 +337,10 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       setExportFeedback('CSV report downloaded successfully.');
+      setTimeout(() => setExportFeedback(null), 4000);
     } catch {
       setExportFeedback('The CSV report could not be created. Please try again.');
+      setTimeout(() => setExportFeedback(null), 6000);
     } finally {
       setIsExporting(false);
     }

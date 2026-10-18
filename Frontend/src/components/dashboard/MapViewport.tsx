@@ -48,6 +48,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
   const mapRef = useRef<HTMLDivElement | null>(null);
   const leafletMapRef = useRef<L.Map | null>(null);
   const markerLayerRef = useRef<L.LayerGroup | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
   const hasInitialFitBoundsRef = useRef<boolean>(false);
   const [mapMode, setMapMode] = useState<MapViewMode>('street');
   const [zoomLevel, setZoomLevel] = useState<number>(12);
@@ -83,26 +84,48 @@ export const MapViewport: React.FC<MapViewportProps> = ({
     });
 
     tiles.addTo(map);
+    tileLayerRef.current = tiles;
     markerLayerRef.current = L.layerGroup().addTo(map);
     leafletMapRef.current = map;
 
     return () => {
       markerLayerRef.current?.clearLayers();
+      tileLayerRef.current?.remove();
+      tileLayerRef.current = null;
       map.remove();
       leafletMapRef.current = null;
       markerLayerRef.current = null;
     };
   }, []);
 
+  // Swap tile layer when the user toggles map mode
   useEffect(() => {
-    if (!leafletMapRef.current) {
-      return;
-    }
+    const map = leafletMapRef.current;
+    if (!map) return;
 
-    if (!selectedVehicleId && vehicles[0]) {
+    const tileUrls: Record<MapViewMode, string> = {
+      street: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      traffic: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+    };
+
+    tileLayerRef.current?.remove();
+    const newTile = L.tileLayer(tileUrls[mapMode], { maxZoom: 19, subdomains: ['a', 'b', 'c'] });
+    newTile.addTo(map);
+    tileLayerRef.current = newTile;
+    // The map-init effect handles the first tile load; this runs only on subsequent mode changes.
+  }, [mapMode]);
+
+  // Auto-select the first vehicle once the vehicle list loads and nothing is selected yet.
+  // Depend only on vehicles.length (not the full array reference) to avoid re-triggering
+  // on every telemetry refresh that returns a new array object.
+  useEffect(() => {
+    if (!leafletMapRef.current) return;
+    if (!selectedVehicleId && vehicles.length > 0) {
       setSelectedVehicleId(vehicles[0].id);
     }
-  }, [selectedVehicleId, setSelectedVehicleId, vehicles]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicles.length]);
 
   // Smoothly center/fly to target vehicle coordinates
   const flyToVehicle = useCallback((targetVehicleId?: string | null) => {
@@ -123,9 +146,10 @@ export const MapViewport: React.FC<MapViewportProps> = ({
     }
   }, [selectedVehicleId, vehicles]);
 
-  // Trigger flyTo when selectedVehicleId changes or when centerTrigger increments
+  // Trigger flyTo when selectedVehicleId changes or when centerTrigger increments.
+  // Guard with leafletMapRef.current so we don't try to fly before the map is mounted.
   useEffect(() => {
-    if (selectedVehicleId) {
+    if (selectedVehicleId && leafletMapRef.current) {
       flyToVehicle(selectedVehicleId);
     }
   }, [selectedVehicleId, centerTrigger, flyToVehicle]);

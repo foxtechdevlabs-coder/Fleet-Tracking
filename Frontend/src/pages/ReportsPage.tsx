@@ -59,10 +59,11 @@ export const ReportsPage: React.FC = () => {
     abortControllerRef.current = controller;
 
     setActiveFilter(filter);
+    // Show the loading skeleton both on fresh queries and retries so the user
+    // always gets visual feedback that a new request is in-flight.
+    setQueryState('loading');
     if (isRetry) {
       setIsRetrying(true);
-    } else {
-      setQueryState('loading');
     }
     setRecords([]);
     setErrorMessage(null);
@@ -175,7 +176,6 @@ export const ReportsPage: React.FC = () => {
             disabled
             title="Generate a report to enable export"
           >
-            <Shield size={14} style={{ display: 'none' }} />
             <span>Export CSV (.csv)</span>
           </button>
           <button
