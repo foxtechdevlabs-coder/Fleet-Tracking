@@ -47,9 +47,9 @@ export const TopNav: React.FC = () => {
           <span className="active-crumb">{getSubBreadcrumb()}</span>
         </nav>
 
-        <div className="connection-pill" title="Telemetry MQTT WebSocket active">
-          <span className="pulse-dot" />
-          <span>Realtime Connected</span>
+        <div className="connection-pill" title="Telemetry feed is currently unavailable because the backend does not expose a realtime socket yet">
+          <span className="pulse-dot" style={{ background: '#94a3b8' }} />
+          <span>Telemetry Feed Offline</span>
         </div>
       </div>
 

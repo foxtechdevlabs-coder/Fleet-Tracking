@@ -269,9 +269,9 @@ export const MapViewport: React.FC<MapViewportProps> = ({
   };
 
   const hasLiveTelemetry = activeVehicleIds.length > 0;
-  const statusText = hasLiveTelemetry ? 'Socket.IO Connected' : 'Awaiting Live GPS Telemetry Stream';
-  const latency = hasLiveTelemetry ? '34ms' : '--';
-  const sync = hasLiveTelemetry ? 'Update: 5s sync' : 'Awaiting Fix';
+  const statusText = hasLiveTelemetry ? 'Telemetry snapshot available' : 'Awaiting valid GPS telemetry';
+  const latency = hasLiveTelemetry ? 'N/A' : '--';
+  const sync = hasLiveTelemetry ? 'Backend snapshot' : 'No live feed';
 
   const displayedVehicle = selectedVehicle ?? vehicles[0] ?? null;
   const speedForDisplay = displayedVehicle?.telemetry?.speed ?? null;

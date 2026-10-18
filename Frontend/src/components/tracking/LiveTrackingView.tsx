@@ -236,7 +236,7 @@ export const LiveTrackingView: React.FC = () => {
             <span>Fleet Health: {vehicles.length ? '96%' : '--%'}</span>
           </div>
           <div className="health-pill subtle">
-            <Wifi size={12} /> Auto-sync 5s
+            <Wifi size={12} /> Snapshot refresh
           </div>
           <div className="health-pill subtle">
             <ShieldCheck size={12} /> Nodes Online {vehicles.filter((v) => v.operationalStatus !== 'OFFLINE').length}

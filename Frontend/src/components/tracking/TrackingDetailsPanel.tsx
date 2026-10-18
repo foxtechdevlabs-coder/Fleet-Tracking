@@ -669,7 +669,7 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
       <div className="tracking-details-footer">
         <div className="protocol-indicator">
           <Zap size={12} color="#0284c7" />
-          <span>Real-time Telematics Feed • Zero Dummy Data</span>
+          <span>Telemetry Snapshot • Backend data only</span>
         </div>
       </div>
     </aside>
