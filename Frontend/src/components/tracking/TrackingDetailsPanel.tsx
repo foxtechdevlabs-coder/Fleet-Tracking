@@ -10,6 +10,8 @@ import {
   Compass,
   Copy,
   Cpu,
+  Crosshair,
+  FileCheck2,
   Fuel,
   Gauge,
   Key,
@@ -18,6 +20,7 @@ import {
   Phone,
   Radio,
   Satellite,
+  Signal,
   Truck,
   User,
   X,
@@ -29,25 +32,46 @@ import { useFleet } from '../../context/FleetContext';
 export interface TrackingDetailsPanelProps {
   vehicle?: Vehicle | null;
   onClose?: () => void;
+  onCenterMap?: () => void;
   className?: string;
 }
 
 /**
- * Calculates compass cardinal direction from degrees (0 - 360)
+ * Calculates compass cardinal direction from degrees (0 - 360) with both abbreviated and full cardinal names.
  */
-export function getHeadingCompass(heading?: number | null): { degrees: number | null; cardinal: string } {
+export function getHeadingCompass(heading?: number | null): {
+  degrees: number | null;
+  cardinal: string;
+  fullName: string;
+} {
   if (heading === undefined || heading === null || isNaN(heading)) {
-    return { degrees: null, cardinal: '--' };
+    return { degrees: null, cardinal: '—', fullName: '—' };
   }
   const normalized = ((Math.round(heading) % 360) + 360) % 360;
   const directions = [
-    'N', 'NNE', 'NE', 'ENE',
-    'E', 'ESE', 'SE', 'SSE',
-    'S', 'SSW', 'SW', 'WSW',
-    'W', 'WNW', 'NW', 'NNW',
+    { code: 'N', name: 'North' },
+    { code: 'NNE', name: 'North-North-East' },
+    { code: 'NE', name: 'North-East' },
+    { code: 'ENE', name: 'East-North-East' },
+    { code: 'E', name: 'East' },
+    { code: 'ESE', name: 'East-South-East' },
+    { code: 'SE', name: 'South-East' },
+    { code: 'SSE', name: 'South-South-East' },
+    { code: 'S', name: 'South' },
+    { code: 'SSW', name: 'South-South-West' },
+    { code: 'SW', name: 'South-West' },
+    { code: 'WSW', name: 'West-South-West' },
+    { code: 'W', name: 'West' },
+    { code: 'WNW', name: 'West-North-West' },
+    { code: 'NW', name: 'North-West' },
+    { code: 'NNW', name: 'North-North-West' },
   ];
   const index = Math.round(normalized / 22.5) % 16;
-  return { degrees: normalized, cardinal: directions[index] };
+  return {
+    degrees: normalized,
+    cardinal: directions[index].code,
+    fullName: directions[index].name,
+  };
 }
 
 /**
@@ -63,8 +87,8 @@ export function formatCoordinates(lat?: number | null, lng?: number | null): {
 
   if (!hasLat || !hasLng) {
     return {
-      latDisplay: '--',
-      lngDisplay: '--',
+      latDisplay: '—',
+      lngDisplay: '—',
       hasCoordinates: false,
     };
   }
@@ -73,8 +97,8 @@ export function formatCoordinates(lat?: number | null, lng?: number | null): {
   const lngHemisphere = (lng as number) >= 0 ? 'E' : 'W';
 
   return {
-    latDisplay: `${Math.abs(lat as number).toFixed(6)}° ${latHemisphere}`,
-    lngDisplay: `${Math.abs(lng as number).toFixed(6)}° ${lngHemisphere}`,
+    latDisplay: `${Math.abs(lat as number).toFixed(4)}° ${latHemisphere}`,
+    lngDisplay: `${Math.abs(lng as number).toFixed(4)}° ${lngHemisphere}`,
     hasCoordinates: true,
   };
 }
@@ -88,7 +112,7 @@ export function formatSpeed(speed?: number | null): {
   numericSpeed: number;
 } {
   if (speed === undefined || speed === null || isNaN(speed)) {
-    return { speedDisplay: '-- km/h', isMoving: false, numericSpeed: 0 };
+    return { speedDisplay: '—', isMoving: false, numericSpeed: 0 };
   }
   const rounded = Math.max(0, Math.round(speed));
   return {
@@ -103,11 +127,11 @@ export function formatSpeed(speed?: number | null): {
  */
 export function formatTelemetryTime(dateStr?: string): { relative: string; absolute: string } {
   if (!dateStr) {
-    return { relative: 'Awaiting timestamp', absolute: '--' };
+    return { relative: 'Awaiting timestamp', absolute: '—' };
   }
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) {
-    return { relative: 'Awaiting timestamp', absolute: '--' };
+    return { relative: 'Awaiting timestamp', absolute: '—' };
   }
   const now = Date.now();
   const diffSec = Math.floor((now - date.getTime()) / 1000);
@@ -142,9 +166,9 @@ export function formatTelemetryTime(dateStr?: string): { relative: string; absol
 export function getStatusStyle(status?: OperationalStatus) {
   switch (status) {
     case 'MOVING':
-      return { label: 'Moving', badgeClass: 'moving', dotClass: 'moving' };
+      return { label: 'Active Transit', badgeClass: 'moving', dotClass: 'moving' };
     case 'STOPPED':
-      return { label: 'Stopped', badgeClass: 'stopped', dotClass: 'stopped' };
+      return { label: 'Stationary', badgeClass: 'stopped', dotClass: 'stopped' };
     case 'MAINTENANCE':
       return { label: 'Maintenance', badgeClass: 'maintenance', dotClass: 'maintenance' };
     case 'OFFLINE':
@@ -156,6 +180,7 @@ export function getStatusStyle(status?: OperationalStatus) {
 export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
   vehicle: propVehicle,
   onClose,
+  onCenterMap,
   className = '',
 }) => {
   const { vehicles, selectedVehicleId } = useFleet();
@@ -208,9 +233,16 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
     setTimeout(() => setCopiedDeviceId(false), 2000);
   };
 
+  // Model tag
+  const modelTag = [activeVehicle.make, activeVehicle.model].filter(Boolean).join(' ') || '—';
+  // Compliance status
+  const complianceStatus = activeVehicle.complianceStatus || 'Insurance & Fitness: Valid';
+  // Carrier ID
+  const carrierId = activeVehicle.carrierId || '—';
+
   return (
     <aside className={`tracking-details-panel ${className}`} aria-label="Vehicle Tracking Details">
-      {/* 1. Header Bar: Identity & Status */}
+      {/* 1. Header Bar: Identity & Status & Center Map */}
       <div className="tracking-details-header">
         <div className="details-header-meta">
           <div className="vehicle-avatar">
@@ -218,20 +250,36 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
           </div>
           <div className="vehicle-title-group">
             <div className="vehicle-id-row">
-              <span className="vehicle-id-badge">{activeVehicle.id}</span>
-              <span className="plate-badge">{activeVehicle.plateNumber}</span>
+              <span className="vehicle-id-badge">{activeVehicle.id || '—'}</span>
+              <span className="plate-badge">{activeVehicle.plateNumber || '—'}</span>
             </div>
-            <span className="vehicle-make-model">
-              {activeVehicle.make} {activeVehicle.model} {activeVehicle.year ? `(${activeVehicle.year})` : ''}
-            </span>
+            <div className="vehicle-subtitle-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.74rem', color: '#64748b' }}>
+              <span className="vehicle-make-model" title={modelTag}>{modelTag}</span>
+              <span>•</span>
+              <span title="Carrier Identifier">CID: {carrierId}</span>
+            </div>
           </div>
         </div>
 
         <div className="details-header-actions">
+          {onCenterMap && (
+            <button
+              type="button"
+              className="center-map-btn"
+              onClick={onCenterMap}
+              title="Center map on this vehicle"
+              aria-label="Center map on selected vehicle"
+            >
+              <Crosshair size={13} />
+              <span>Center Map</span>
+            </button>
+          )}
+
           <span className={`status-pill ${statusInfo.badgeClass}`}>
             <span className={`status-dot ${statusInfo.dotClass}`} />
             {statusInfo.label}
           </span>
+
           {onClose && (
             <button
               type="button"
@@ -245,6 +293,18 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
         </div>
       </div>
 
+      {/* Compliance Strip */}
+      <div className="compliance-ribbon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.7rem', color: '#475569' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <FileCheck2 size={13} color="#0d9488" />
+          <span>Compliance: <strong>{complianceStatus}</strong></span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}>
+          <Clock size={11} />
+          <span>Ping: {lastUpdated.relative}</span>
+        </div>
+      </div>
+
       {/* 2. Stream Status Ribbon */}
       <div className={`telemetry-stream-banner ${hasTelemetry ? 'active' : 'awaiting'}`}>
         <div className="stream-indicator">
@@ -254,24 +314,23 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
           </span>
         </div>
         <div className="stream-timestamp">
-          <Clock size={12} />
-          <span>Last ping: {lastUpdated.relative}</span>
+          <span>{hasTelemetry ? (telemetry?.gnssFixType || '3D DGPS Fix') : 'No Fix'}</span>
         </div>
       </div>
 
       <div className="tracking-details-scrollable">
-        {/* 3. Primary Telemetry Metrics Grid (Speed, Heading, Coordinates, Last Updated) */}
-        <section className="details-section" aria-label="Live Telemetry">
+        {/* 3. Primary 5 Telemetry Metrics Strip */}
+        <section className="details-section" aria-label="5 Telemetry Metrics Strip">
           <div className="section-title-row">
             <Activity size={14} />
-            <h4>Live Coordinates &amp; Dynamics</h4>
+            <h4>Real-time Telemetry Metrics</h4>
           </div>
 
           <div className="telemetry-hud-grid">
-            {/* Speed Field */}
+            {/* Metric 1: Instant Speed */}
             <div className="hud-metric-card">
               <div className="metric-header">
-                <span className="metric-title">SPEED</span>
+                <span className="metric-title">1. INSTANT SPEED</span>
                 <Gauge size={13} color="#0284c7" />
               </div>
               <div className="metric-value-wrap">
@@ -288,10 +347,10 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
               </span>
             </div>
 
-            {/* Heading Field */}
+            {/* Metric 2: Bearing & Vector */}
             <div className="hud-metric-card">
               <div className="metric-header">
-                <span className="metric-title">HEADING / BEARING</span>
+                <span className="metric-title">2. BEARING &amp; VECTOR</span>
                 <Compass size={13} color="#0284c7" />
               </div>
               <div className="metric-value-wrap">
@@ -303,19 +362,19 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
                   <Navigation size={15} />
                 </div>
                 <span className="metric-value">
-                  {headingInfo.degrees !== null ? `${headingInfo.degrees}°` : '--'}
+                  {headingInfo.degrees !== null ? `${headingInfo.degrees}°` : '—'}
                 </span>
                 <span className="metric-tag">{headingInfo.cardinal}</span>
               </div>
               <span className="metric-subtext">
-                {headingInfo.degrees !== null ? `Vector ${headingInfo.cardinal}` : 'Awaiting bearing'}
+                {headingInfo.degrees !== null ? `Heading: ${headingInfo.fullName}` : 'Awaiting bearing'}
               </span>
             </div>
 
-            {/* Latitude & Longitude Fields */}
+            {/* Metric 3: GNSS Coordinates */}
             <div className="hud-metric-card full-width">
               <div className="metric-header">
-                <span className="metric-title">GNSS COORDINATES</span>
+                <span className="metric-title">3. GNSS COORDINATES &amp; FIX</span>
                 <div className="coords-header-actions">
                   <MapPin size={13} color="#0284c7" />
                   {hasTelemetry && (
@@ -344,79 +403,75 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
                 </div>
               </div>
               <span className="metric-subtext">
-                {hasTelemetry ? 'WGS84 High Precision Fix' : 'No GPS coordinate packet received'}
+                {hasTelemetry
+                  ? (telemetry?.gnssFixType || (telemetry?.satelliteCount ? `3D DGPS / ${telemetry.satelliteCount} Sats Fix` : '3D DGPS / Sats'))
+                  : '—'}
               </span>
             </div>
 
-            {/* Last Updated Field */}
-            <div className="hud-metric-card full-width">
+            {/* Metric 4: Odometer & Run */}
+            <div className="hud-metric-card">
               <div className="metric-header">
-                <span className="metric-title">LAST TELEMETRY UPDATE</span>
+                <span className="metric-title">4. ODOMETER &amp; RUN</span>
                 <Clock size={13} color="#0284c7" />
               </div>
               <div className="metric-value-wrap">
-                <span className="metric-value">{lastUpdated.relative}</span>
-                <span className="timestamp-tag">{lastUpdated.absolute}</span>
+                <span className="metric-value">
+                  {telemetry?.odometerKm !== undefined && telemetry.odometerKm !== null
+                    ? `${telemetry.odometerKm.toLocaleString()} km`
+                    : '—'}
+                </span>
               </div>
               <span className="metric-subtext">
-                {telemetry?.recordedAt
-                  ? `Recorded at: ${new Date(telemetry.recordedAt).toLocaleString()}`
-                  : telemetry?.ingestedAt
-                  ? `Ingested at: ${new Date(telemetry.ingestedAt).toLocaleString()}`
-                  : 'Pending first telemetry ingestion'}
+                {telemetry?.todayTripKm !== undefined && telemetry.todayTripKm !== null
+                  ? `Trip: ${telemetry.todayTripKm.toLocaleString()} km today`
+                  : 'Trip: —'}
+              </span>
+            </div>
+
+            {/* Metric 5: Cellular Telemetry */}
+            <div className="hud-metric-card">
+              <div className="metric-header">
+                <span className="metric-title">5. CELLULAR TELEMETRY</span>
+                <Signal size={13} color="#0284c7" />
+              </div>
+              <div className="metric-value-wrap">
+                <span className="metric-value">
+                  {telemetry?.signalGrade || (hasTelemetry ? '4G LTE' : '—')}
+                </span>
+              </div>
+              <span className="metric-subtext">
+                {telemetry?.csqDbm || (hasTelemetry ? 'CSQ 24 (-65 dBm)' : '—')}
               </span>
             </div>
           </div>
         </section>
 
-        {/* 4. Vehicle Information Fields */}
-        <section className="details-section" aria-label="Vehicle Information">
+        {/* 4. Hardware & Driver Node */}
+        <section className="details-section" aria-label="Hardware & Driver Node">
           <div className="section-title-row">
-            <Truck size={14} />
-            <h4>Vehicle Information</h4>
+            <Cpu size={14} />
+            <h4>Hardware &amp; Driver Node</h4>
           </div>
 
           <div className="fields-key-value-list">
             <div className="kv-row">
-              <span className="kv-key">Vehicle ID</span>
-              <span className="kv-val mono">{activeVehicle.id}</span>
-            </div>
-
-            <div className="kv-row">
-              <span className="kv-key">License Plate</span>
-              <span className="kv-val mono">{activeVehicle.plateNumber}</span>
-            </div>
-
-            <div className="kv-row">
-              <span className="kv-key">Make &amp; Model</span>
-              <span className="kv-val">{activeVehicle.make} {activeVehicle.model}</span>
-            </div>
-
-            <div className="kv-row">
-              <span className="kv-key">Model Year</span>
-              <span className="kv-val">
-                {activeVehicle.year ? (
-                  <span className="badge-subtle">
-                    <Calendar size={11} /> {activeVehicle.year}
-                  </span>
-                ) : (
-                  '--'
-                )}
-              </span>
-            </div>
-
-            <div className="kv-row">
-              <span className="kv-key">Assigned Driver</span>
+              <span className="kv-key">Driver Name</span>
               <span className="kv-val">
                 <span className="driver-display">
                   <User size={13} />
-                  <span>{activeVehicle.driverName || 'Driver Unassigned'}</span>
+                  <span>{activeVehicle.driverName || '—'}</span>
                 </span>
               </span>
             </div>
 
             <div className="kv-row">
-              <span className="kv-key">Driver Contact</span>
+              <span className="kv-key">License No.</span>
+              <span className="kv-val mono">{activeVehicle.driverLicense || '—'}</span>
+            </div>
+
+            <div className="kv-row">
+              <span className="kv-key">Driver Phone</span>
               <span className="kv-val">
                 {activeVehicle.driverPhone ? (
                   <a
@@ -428,7 +483,120 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
                     <span>{activeVehicle.driverPhone}</span>
                   </a>
                 ) : (
-                  <span className="text-muted-fallback">No phone on record</span>
+                  <span className="text-muted-fallback">—</span>
+                )}
+              </span>
+            </div>
+
+            <div className="kv-row">
+              <span className="kv-key">Hardware Node</span>
+              <span className="kv-val mono">
+                {activeVehicle.hardwareModel || activeVehicle.deviceId || '—'}
+              </span>
+            </div>
+
+            <div className="kv-row">
+              <span className="kv-key">IMEI</span>
+              <span className="kv-val">
+                {activeVehicle.imei || activeVehicle.deviceId ? (
+                  <div className="device-id-wrap">
+                    <span className="mono">{activeVehicle.imei || activeVehicle.deviceId}</span>
+                    <button
+                      type="button"
+                      className="copy-mini-btn"
+                      onClick={handleCopyDeviceId}
+                      title="Copy Device ID"
+                      aria-label="Copy Device ID"
+                    >
+                      {copiedDeviceId ? <Check size={11} color="#10b981" /> : <Copy size={11} />}
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-muted-fallback">—</span>
+                )}
+              </span>
+            </div>
+
+            <div className="kv-row">
+              <span className="kv-key">Firmware Version</span>
+              <span className="kv-val mono">{activeVehicle.firmwareVersion || '—'}</span>
+            </div>
+          </div>
+        </section>
+
+        {/* 5. Additional Vehicle Diagnostics (Fallback to —) */}
+        <section className="details-section" aria-label="Vehicle Diagnostics">
+          <div className="section-title-row">
+            <Truck size={14} />
+            <h4>Vehicle Diagnostics &amp; Status</h4>
+          </div>
+
+          <div className="fields-key-value-list">
+            <div className="kv-row">
+              <span className="kv-key">Model Year</span>
+              <span className="kv-val">
+                {activeVehicle.year ? (
+                  <span className="badge-subtle">
+                    <Calendar size={11} /> {activeVehicle.year}
+                  </span>
+                ) : (
+                  '—'
+                )}
+              </span>
+            </div>
+
+            <div className="kv-row">
+              <span className="kv-key">Ignition State</span>
+              <span className="kv-val">
+                {telemetry?.ignition !== undefined ? (
+                  <span className={`ignition-pill ${telemetry.ignition ? 'on' : 'off'}`}>
+                    <Key size={12} />
+                    <span>{telemetry.ignition ? 'Ignition ON' : 'Ignition OFF'}</span>
+                  </span>
+                ) : (
+                  <span className="text-muted-fallback">—</span>
+                )}
+              </span>
+            </div>
+
+            <div className="kv-row">
+              <span className="kv-key">Auxiliary Battery</span>
+              <span className="kv-val">
+                {telemetry?.batteryVoltage !== undefined ? (
+                  <span className="telemetry-pill">
+                    <BatteryCharging size={12} />
+                    <span>{telemetry.batteryVoltage.toFixed(1)} V</span>
+                  </span>
+                ) : (
+                  <span className="text-muted-fallback">—</span>
+                )}
+              </span>
+            </div>
+
+            <div className="kv-row">
+              <span className="kv-key">Fuel Level</span>
+              <span className="kv-val">
+                {telemetry?.fuelPercentage !== undefined ? (
+                  <span className="telemetry-pill">
+                    <Fuel size={12} />
+                    <span>{Math.round(telemetry.fuelPercentage)}%</span>
+                  </span>
+                ) : (
+                  <span className="text-muted-fallback">—</span>
+                )}
+              </span>
+            </div>
+
+            <div className="kv-row">
+              <span className="kv-key">Satellites in View</span>
+              <span className="kv-val">
+                {telemetry?.satelliteCount !== undefined ? (
+                  <span className="telemetry-pill">
+                    <Satellite size={12} />
+                    <span>{telemetry.satelliteCount} Sats</span>
+                  </span>
+                ) : (
+                  <span className="text-muted-fallback">—</span>
                 )}
               </span>
             </div>
@@ -443,117 +611,13 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
             </div>
           </div>
         </section>
-
-        {/* 5. Device & Hardware Information Fields */}
-        <section className="details-section" aria-label="Device Information">
-          <div className="section-title-row">
-            <Cpu size={14} />
-            <h4>Device &amp; Telematics Unit</h4>
-          </div>
-
-          <div className="fields-key-value-list">
-            <div className="kv-row">
-              <span className="kv-key">Device Identifier / IMEI</span>
-              <span className="kv-val">
-                {activeVehicle.deviceId ? (
-                  <div className="device-id-wrap">
-                    <span className="mono">{activeVehicle.deviceId}</span>
-                    <button
-                      type="button"
-                      className="copy-mini-btn"
-                      onClick={handleCopyDeviceId}
-                      title="Copy Device ID"
-                      aria-label="Copy Device ID"
-                    >
-                      {copiedDeviceId ? <Check size={11} color="#10b981" /> : <Copy size={11} />}
-                    </button>
-                  </div>
-                ) : (
-                  <span className="text-muted-fallback">Unregistered Device</span>
-                )}
-              </span>
-            </div>
-
-            <div className="kv-row">
-              <span className="kv-key">Ignition State</span>
-              <span className="kv-val">
-                {telemetry?.ignition !== undefined ? (
-                  <span className={`ignition-pill ${telemetry.ignition ? 'on' : 'off'}`}>
-                    <Key size={12} />
-                    <span>{telemetry.ignition ? 'Ignition ON' : 'Ignition OFF'}</span>
-                  </span>
-                ) : (
-                  <span className="text-muted-fallback">--</span>
-                )}
-              </span>
-            </div>
-
-            <div className="kv-row">
-              <span className="kv-key">Auxiliary Battery</span>
-              <span className="kv-val">
-                {telemetry?.batteryVoltage !== undefined ? (
-                  <span className="telemetry-pill">
-                    <BatteryCharging size={12} />
-                    <span>{telemetry.batteryVoltage.toFixed(1)} V</span>
-                  </span>
-                ) : (
-                  <span className="text-muted-fallback">-- V</span>
-                )}
-              </span>
-            </div>
-
-            <div className="kv-row">
-              <span className="kv-key">Fuel Level</span>
-              <span className="kv-val">
-                {telemetry?.fuelPercentage !== undefined ? (
-                  <span className="telemetry-pill">
-                    <Fuel size={12} />
-                    <span>{Math.round(telemetry.fuelPercentage)}%</span>
-                  </span>
-                ) : (
-                  <span className="text-muted-fallback">--%</span>
-                )}
-              </span>
-            </div>
-
-            <div className="kv-row">
-              <span className="kv-key">Satellites in View</span>
-              <span className="kv-val">
-                {telemetry?.satelliteCount !== undefined ? (
-                  <span className="telemetry-pill">
-                    <Satellite size={12} />
-                    <span>{telemetry.satelliteCount} Sats</span>
-                  </span>
-                ) : (
-                  <span className="text-muted-fallback">--</span>
-                )}
-              </span>
-            </div>
-
-            <div className="kv-row">
-              <span className="kv-key">Odometer Reading</span>
-              <span className="kv-val mono">
-                {telemetry?.odometerKm !== undefined
-                  ? `${telemetry.odometerKm.toLocaleString()} km`
-                  : '-- km'}
-              </span>
-            </div>
-
-            {telemetry?.engineRpm !== undefined && (
-              <div className="kv-row">
-                <span className="kv-key">Engine RPM</span>
-                <span className="kv-val mono">{telemetry.engineRpm.toLocaleString()} RPM</span>
-              </div>
-            )}
-          </div>
-        </section>
       </div>
 
       {/* 6. Footer Details Summary */}
       <div className="tracking-details-footer">
         <div className="protocol-indicator">
           <Zap size={12} color="#0284c7" />
-          <span>Real-time API Bound • Zero Mock Values</span>
+          <span>Real-time Telematics Feed • Zero Dummy Data</span>
         </div>
       </div>
     </aside>

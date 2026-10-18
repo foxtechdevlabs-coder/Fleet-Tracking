@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   Clock,
   Compass,
-  Download,
   Search,
   ChevronLeft,
   ChevronRight,
@@ -10,14 +9,17 @@ import {
   Gauge,
   FileSpreadsheet,
   FileText,
+  AlertTriangle,
+  RotateCw,
 } from 'lucide-react';
-import type { TrackingReportRecord } from '../../types/telemetry';
+import type { TrackingReportFilter, TrackingReportRecord } from '../../types/telemetry';
 
-interface ReportResultsTableProps {
+export interface ReportResultsTableProps {
   records: TrackingReportRecord[];
+  filter?: TrackingReportFilter | null;
 }
 
-const REPORT_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const REPORT_TIME_ZONE_DISPLAY = 'Asia/Kolkata (UTC +05:30)';
 
 function getHeadingDirection(deg: number): string {
   const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
@@ -25,35 +27,134 @@ function getHeadingDirection(deg: number): string {
   return directions[index];
 }
 
-function formatTimestamp(isoOrDate: string): { dateStr: string; timeStr: string } {
+export function formatReportTimestampIST(isoOrDate: string): string {
   try {
     const d = new Date(isoOrDate);
-    if (isNaN(d.getTime())) return { dateStr: isoOrDate, timeStr: '' };
+    if (isNaN(d.getTime())) return isoOrDate || '—';
 
     const dateStr = d.toLocaleDateString('en-IN', {
-      year: 'numeric',
-      month: 'short',
       day: '2-digit',
-      timeZone: REPORT_TIME_ZONE,
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'Asia/Kolkata',
     });
     const timeStr = d.toLocaleTimeString('en-IN', {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
-      hour12: false,
-      timeZone: REPORT_TIME_ZONE,
+      hour12: true,
+      timeZone: 'Asia/Kolkata',
     });
 
-    return { dateStr, timeStr };
+    return `${dateStr}, ${timeStr} IST`;
   } catch {
-    return { dateStr: isoOrDate, timeStr: '' };
+    return isoOrDate || '—';
   }
 }
 
-export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records }) => {
+export function formatVehicleColumn(r: TrackingReportRecord): string {
+  if (r.vehicleId && r.plateNumber) {
+    return `${r.vehicleId} (${r.plateNumber})`;
+  }
+  if (r.plateNumber) return r.plateNumber;
+  if (r.vehicleId) return r.vehicleId;
+  return '—';
+}
+
+function haversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function calculateTotalDistance(records: TrackingReportRecord[]): number {
+  if (records.length < 2) return 0;
+  let totalKm = 0;
+  let prev: [number, number] | null = null;
+  for (const r of records) {
+    if (
+      typeof r.latitude === 'number' && Number.isFinite(r.latitude) &&
+      typeof r.longitude === 'number' && Number.isFinite(r.longitude)
+    ) {
+      if (prev) {
+        const d = haversineDistanceKm(prev[0], prev[1], r.latitude, r.longitude);
+        if (d > 0.001 && d < 500) {
+          totalKm += d;
+        }
+      }
+      prev = [r.latitude, r.longitude];
+    }
+  }
+  return totalKm;
+}
+
+function calculateOperatingEngine(records: TrackingReportRecord[]): string {
+  if (records.length === 0) return '—';
+
+  const sorted = [...records]
+    .filter((r) => r.recordedAt)
+    .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
+
+  if (sorted.length < 2) return '—';
+
+  let operatingMs = 0;
+  let hasSignals = false;
+
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const curr = sorted[i];
+    const next = sorted[i + 1];
+    const dt = new Date(next.recordedAt).getTime() - new Date(curr.recordedAt).getTime();
+    if (dt > 0 && dt <= 3600000) {
+      if (curr.ignition === true || (typeof curr.speed === 'number' && curr.speed > 0)) {
+        operatingMs += dt;
+        hasSignals = true;
+      } else if (curr.ignition === false) {
+        hasSignals = true;
+      }
+    }
+  }
+
+  if (!hasSignals && operatingMs === 0) {
+    return '—';
+  }
+
+  const hours = Math.floor(operatingMs / 3600000);
+  const minutes = Math.floor((operatingMs % 3600000) / 60000);
+  return `${hours}h ${minutes}m`;
+}
+
+function getPageNumbers(current: number, total: number): (number | '...')[] {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  const pages: (number | '...')[] = [1];
+  if (current > 3) {
+    pages.push('...');
+  }
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  for (let i = start; i <= end; i++) {
+    pages.push(i);
+  }
+  if (current < total - 2) {
+    pages.push('...');
+  }
+  pages.push(total);
+  return pages;
+}
+
+export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records, filter }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [rowsPerPage, setRowsPerPage] = useState(15);
   const [isExporting, setIsExporting] = useState(false);
   const [exportFeedback, setExportFeedback] = useState<string | null>(null);
 
@@ -90,17 +191,36 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
     return filteredRecords.slice(start, start + rowsPerPage);
   }, [filteredRecords, currentPage, rowsPerPage]);
 
-  // Only metrics directly supported by the returned records are calculated.
+  // Derived 5 Summary Metrics
   const stats = useMemo(() => {
     const speeds = records
       .map((r) => r.speed)
       .filter((speed): speed is number => typeof speed === 'number' && Number.isFinite(speed));
 
+    const maxSpeed = speeds.length > 0 ? Math.max(...speeds) : null;
+    const totalDistance = calculateTotalDistance(records);
+    const engineHours = calculateOperatingEngine(records);
+
     return {
-      maxSpeed: speeds.length > 0 ? Math.max(...speeds) : null,
+      maxSpeed,
+      totalDistance,
+      engineHours,
     };
   }, [records]);
 
+  // Helper to generate compliant filenames
+  const getFilenameBase = () => {
+    const vId = filter?.vehicleId ? filter.vehicleId.toLowerCase() : 'all';
+    const sanitize = (dateStr?: string) => {
+      if (!dateStr) return '';
+      return dateStr.replace(/[:.TZ]/g, '-').slice(0, 19);
+    };
+    const fromStr = sanitize(filter?.dateFrom) || 'start';
+    const toStr = sanitize(filter?.dateTo) || 'end';
+    return `telemetry-report-${vId}-${fromStr}_to_${toStr}`;
+  };
+
+  // Export to Excel (.xlsx) using exact 7 columns
   const handleExportExcel = async () => {
     if (records.length === 0 || isExporting) return;
 
@@ -109,22 +229,39 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
     try {
       await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
       const XLSX = await import('xlsx');
-      const rows = records.map((record) => ({
-        'Date / Time': record.recordedAt,
-        Vehicle: record.plateNumber || record.vehicleId || '',
-        Device: record.deviceId || '',
-        Latitude: Number.isFinite(record.latitude) ? record.latitude : '',
-        Longitude: Number.isFinite(record.longitude) ? record.longitude : '',
-        'Speed (km/h)': record.speed ?? '',
-        'Heading (degrees)': record.heading ?? '',
-        'Altitude (m)': record.altitude ?? '',
-        Ignition: record.ignition ?? '',
-      }));
+      const rows = records.map((record) => {
+        const dateTime = formatReportTimestampIST(record.recordedAt);
+        const vehicle = formatVehicleColumn(record);
+        const device = record.deviceId || '—';
+        const lat = typeof record.latitude === 'number' && Number.isFinite(record.latitude)
+          ? `${Math.abs(record.latitude).toFixed(5)}° ${record.latitude >= 0 ? 'N' : 'S'}`
+          : '—';
+        const lng = typeof record.longitude === 'number' && Number.isFinite(record.longitude)
+          ? `${Math.abs(record.longitude).toFixed(5)}° ${record.longitude >= 0 ? 'E' : 'W'}`
+          : '—';
+        const speed = typeof record.speed === 'number' && Number.isFinite(record.speed)
+          ? (record.speed > 80 ? `${record.speed.toFixed(1)} km/h (Overspeed)` : `${record.speed.toFixed(1)} km/h`)
+          : '—';
+        const heading = typeof record.heading === 'number' && Number.isFinite(record.heading)
+          ? `${Math.round(record.heading)}° ${getHeadingDirection(record.heading)}`
+          : '—';
+
+        return {
+          'DATE / TIME (IST)': dateTime,
+          'VEHICLE': vehicle,
+          'DEVICE': device,
+          'LATITUDE': lat,
+          'LONGITUDE': lng,
+          'SPEED': speed,
+          'HEADING': heading,
+        };
+      });
+
       const workbook = XLSX.utils.book_new();
       const worksheet = XLSX.utils.json_to_sheet(rows);
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Telemetry Records');
-      XLSX.writeFile(workbook, `fleet-tracking-report-${new Date().toISOString().slice(0, 10)}.xlsx`);
-      setExportFeedback('Excel report downloaded.');
+      XLSX.writeFile(workbook, `${getFilenameBase()}.xlsx`);
+      setExportFeedback('Excel report downloaded successfully.');
     } catch {
       setExportFeedback('The Excel report could not be created. Please try again.');
     } finally {
@@ -132,63 +269,169 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
     }
   };
 
+  // Export to CSV (.csv) using exact 7 columns according to RFC 4180
+  const handleExportCsv = () => {
+    if (records.length === 0 || isExporting) return;
+
+    setIsExporting(true);
+    setExportFeedback(null);
+    try {
+      const headers = [
+        'DATE / TIME (IST)',
+        'VEHICLE',
+        'DEVICE',
+        'LATITUDE',
+        'LONGITUDE',
+        'SPEED',
+        'HEADING',
+      ];
+
+      const escapeCsv = (val: string | number | null | undefined): string => {
+        if (val === null || val === undefined) return '""';
+        const str = String(val);
+        return `"${str.replace(/"/g, '""')}"`;
+      };
+
+      const csvRows = [headers.map(escapeCsv).join(',')];
+
+      for (const record of records) {
+        const dateTime = formatReportTimestampIST(record.recordedAt);
+        const vehicle = formatVehicleColumn(record);
+        const device = record.deviceId || '—';
+        const lat = typeof record.latitude === 'number' && Number.isFinite(record.latitude)
+          ? `${Math.abs(record.latitude).toFixed(5)}° ${record.latitude >= 0 ? 'N' : 'S'}`
+          : '—';
+        const lng = typeof record.longitude === 'number' && Number.isFinite(record.longitude)
+          ? `${Math.abs(record.longitude).toFixed(5)}° ${record.longitude >= 0 ? 'E' : 'W'}`
+          : '—';
+        const speed = typeof record.speed === 'number' && Number.isFinite(record.speed)
+          ? (record.speed > 80 ? `${record.speed.toFixed(1)} km/h (Overspeed)` : `${record.speed.toFixed(1)} km/h`)
+          : '—';
+        const heading = typeof record.heading === 'number' && Number.isFinite(record.heading)
+          ? `${Math.round(record.heading)}° ${getHeadingDirection(record.heading)}`
+          : '—';
+
+        csvRows.push([
+          escapeCsv(dateTime),
+          escapeCsv(vehicle),
+          escapeCsv(device),
+          escapeCsv(lat),
+          escapeCsv(lng),
+          escapeCsv(speed),
+          escapeCsv(heading),
+        ].join(','));
+      }
+
+      const csvContent = csvRows.join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${getFilenameBase()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setExportFeedback('CSV report downloaded successfully.');
+    } catch {
+      setExportFeedback('The CSV report could not be created. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const isExportDisabled = records.length === 0 || isExporting;
+  const exportTooltip = records.length === 0 ? 'Generate a report to enable export' : undefined;
+
+  const startRecord = filteredRecords.length === 0 ? 0 : (currentPage - 1) * rowsPerPage + 1;
+  const endRecord = Math.min(currentPage * rowsPerPage, filteredRecords.length);
+  const pageNumbers = getPageNumbers(currentPage, totalPages);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* 1. Report Summary Strip (5 Metric Cards) */}
       <div className="report-meta-strip" aria-label="Report Metric Summary">
+        {/* Metric 1: Total GPS Logs */}
         <div className="report-meta-card">
           <div className="report-meta-icon" style={{ background: '#e0f2fe', color: '#0284c7' }}>
             <FileSpreadsheet size={18} />
           </div>
           <div className="report-meta-info">
             <span className="report-meta-label">Total GPS Logs</span>
-            <span className="report-meta-value">{records.length.toLocaleString()}</span>
+            <span className="report-meta-value">
+              {records.length > 0 ? `${records.length.toLocaleString()} pts` : '0 pts'}
+            </span>
           </div>
         </div>
 
+        {/* Metric 2: Total Distance */}
         <div className="report-meta-card">
           <div className="report-meta-icon" style={{ background: '#ccfbf1', color: '#0d9488' }}>
             <Compass size={18} />
           </div>
           <div className="report-meta-info">
             <span className="report-meta-label">Total Distance</span>
-            <span className="report-meta-value">&mdash;</span>
+            <span className="report-meta-value">
+              {records.length > 0 && stats.totalDistance > 0
+                ? `${stats.totalDistance.toFixed(1)} km`
+                : '—'}
+            </span>
           </div>
         </div>
 
+        {/* Metric 3: Operating Engine */}
         <div className="report-meta-card">
           <div className="report-meta-icon" style={{ background: '#fef3c7', color: '#d97706' }}>
             <Clock size={18} />
           </div>
           <div className="report-meta-info">
             <span className="report-meta-label">Operating Engine</span>
-            <span className="report-meta-value">&mdash;</span>
+            <span className="report-meta-value">{stats.engineHours}</span>
           </div>
         </div>
 
+        {/* Metric 4: Max Speed Recorded (Alert style if > 80 km/h) */}
         <div className="report-meta-card">
-          <div className="report-meta-icon" style={{ background: '#f3e8ff', color: '#7e22ce' }}>
-            <Gauge size={18} />
+          <div
+            className="report-meta-icon"
+            style={{
+              background: stats.maxSpeed !== null && stats.maxSpeed > 80 ? '#fee2e2' : '#f3e8ff',
+              color: stats.maxSpeed !== null && stats.maxSpeed > 80 ? '#dc2626' : '#7e22ce',
+            }}
+          >
+            {stats.maxSpeed !== null && stats.maxSpeed > 80 ? (
+              <AlertTriangle size={18} />
+            ) : (
+              <Gauge size={18} />
+            )}
           </div>
           <div className="report-meta-info">
             <span className="report-meta-label">Max Speed Recorded</span>
-            <span className="report-meta-value">
-              {stats.maxSpeed === null ? '\u2014' : `${stats.maxSpeed.toLocaleString()} km/h`}
+            <span
+              className={`report-meta-value ${
+                stats.maxSpeed !== null && stats.maxSpeed > 80 ? 'alert-speed' : ''
+              }`}
+            >
+              {stats.maxSpeed === null
+                ? '—'
+                : `${stats.maxSpeed.toFixed(1)} km/h${stats.maxSpeed > 80 ? ' (Alert >80)' : ''}`}
             </span>
           </div>
         </div>
 
+        {/* Metric 5: Reporting Timezone */}
         <div className="report-meta-card">
           <div className="report-meta-icon" style={{ background: '#fff7ed', color: '#c2410c' }}>
             <Clock size={18} />
           </div>
           <div className="report-meta-info">
             <span className="report-meta-label">Reporting Timezone</span>
-            <span className="report-meta-value report-timezone-value">{REPORT_TIME_ZONE}</span>
+            <span className="report-meta-value report-timezone-value">{REPORT_TIME_ZONE_DISPLAY}</span>
           </div>
         </div>
       </div>
 
-      {/* Table Section */}
+      {/* 2. Telemetry Records Table Section */}
       <div className="watchlist-section" role="region" aria-label="Tracking Report Results">
         {/* Table Header Controls */}
         <div className="watchlist-header">
@@ -202,7 +445,7 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
 
           <div className="watchlist-controls">
             {/* Quick table search */}
-            <div className="search-input-box" style={{ width: '240px' }}>
+            <div className="search-input-box" style={{ width: '220px' }}>
               <Search size={14} color="#64748b" />
               <input
                 type="text"
@@ -215,19 +458,28 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
               />
             </div>
 
+            {/* Export CSV Button */}
+            <button
+              type="button"
+              className="export-btn"
+              onClick={handleExportCsv}
+              disabled={isExportDisabled}
+              title={exportTooltip || 'Export returned records to CSV file'}
+            >
+              {isExporting ? <RotateCw size={14} className="spin-anim" /> : <FileText size={14} />}
+              <span>Export CSV (.csv)</span>
+            </button>
+
+            {/* Export Excel Button */}
             <button
               type="button"
               className="export-btn"
               onClick={() => void handleExportExcel()}
-              disabled={records.length === 0 || isExporting}
-              title="Export returned records to an Excel workbook"
+              disabled={isExportDisabled}
+              title={exportTooltip || 'Export returned records to Excel workbook'}
             >
-              {isExporting ? <Download size={14} className="spin-anim" /> : <FileSpreadsheet size={14} />}
-              <span>{isExporting ? 'Exporting...' : 'Export Excel'}</span>
-            </button>
-            <button type="button" className="export-btn" disabled title="PDF export is not implemented">
-              <FileText size={14} />
-              <span>Export PDF</span>
+              {isExporting ? <RotateCw size={14} className="spin-anim" /> : <FileSpreadsheet size={14} />}
+              <span>{isExporting ? 'Exporting...' : 'Export Excel (.xlsx)'}</span>
             </button>
           </div>
         </div>
@@ -238,18 +490,18 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
           </p>
         )}
 
-        {/* Responsive Table */}
+        {/* 3. Responsive 7-Column Table */}
         <div className="table-responsive">
           <table className="watchlist-table">
             <thead>
               <tr>
-                <th scope="col">Date / Time ({REPORT_TIME_ZONE})</th>
-                <th scope="col">Vehicle Info</th>
-                <th scope="col">Device Info</th>
-                <th scope="col">Latitude</th>
-                <th scope="col">Longitude</th>
-                <th scope="col">Speed</th>
-                <th scope="col">Heading</th>
+                <th scope="col">DATE / TIME (IST)</th>
+                <th scope="col">VEHICLE</th>
+                <th scope="col">DEVICE</th>
+                <th scope="col">LATITUDE</th>
+                <th scope="col">LONGITUDE</th>
+                <th scope="col">SPEED</th>
+                <th scope="col">HEADING</th>
               </tr>
             </thead>
             <tbody>
@@ -263,58 +515,44 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
                 </tr>
               ) : (
                 paginatedRecords.map((r, idx) => {
-                  const { dateStr, timeStr } = formatTimestamp(r.recordedAt);
+                  const dateTimeFormatted = formatReportTimestampIST(r.recordedAt);
+                  const vehicleFormatted = formatVehicleColumn(r);
                   const isSpeedAvailable = typeof r.speed === 'number' && Number.isFinite(r.speed);
+                  const isOverSpeed = isSpeedAvailable && (r.speed as number) > 80;
                   const isHeadingAvailable = typeof r.heading === 'number' && Number.isFinite(r.heading);
+
+                  const latFormatted = typeof r.latitude === 'number' && Number.isFinite(r.latitude)
+                    ? `${Math.abs(r.latitude).toFixed(5)}° ${r.latitude >= 0 ? 'N' : 'S'}`
+                    : '—';
+
+                  const lngFormatted = typeof r.longitude === 'number' && Number.isFinite(r.longitude)
+                    ? `${Math.abs(r.longitude).toFixed(5)}° ${r.longitude >= 0 ? 'E' : 'W'}`
+                    : '—';
 
                   return (
                     <tr key={r.id || `${r.recordedAt}-${idx}`}>
-                      {/* Date/Time Column */}
+                      {/* Column 1: DATE / TIME (IST) */}
+                      <td>
+                        <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.82rem' }}>
+                          {dateTimeFormatted}
+                        </span>
+                      </td>
+
+                      {/* Column 2: VEHICLE */}
                       <td>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.82rem' }}>
-                            {dateStr}
+                          <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: '#0284c7' }}>
+                            {vehicleFormatted}
                           </span>
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              fontFamily: 'var(--font-mono)',
-                              fontSize: '0.74rem',
-                              color: '#64748b',
-                            }}
-                          >
-                            <Clock size={11} />
-                            <span>{timeStr || r.recordedAt}</span>
-                          </div>
+                          {(r.vehicleMake || r.vehicleModel) && (
+                            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                              {r.vehicleMake} {r.vehicleModel}
+                            </span>
+                          )}
                         </div>
                       </td>
 
-                      {/* Vehicle Info Column */}
-                      <td>
-                        {r.plateNumber ? (
-                          <>
-                            <div className="plate-badge">
-                              <div className="flag-strip" />
-                              <span>{r.plateNumber}</span>
-                            </div>
-                            {(r.vehicleMake || r.vehicleModel) && (
-                              <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-                                {r.vehicleMake} {r.vehicleModel}
-                              </div>
-                            )}
-                          </>
-                        ) : r.vehicleId ? (
-                          <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: '#0284c7' }}>
-                            {r.vehicleId}
-                          </span>
-                        ) : (
-                          <span style={{ color: '#94a3b8' }}>-</span>
-                        )}
-                      </td>
-
-                      {/* Device Info Column */}
+                      {/* Column 3: DEVICE */}
                       <td>
                         {r.deviceId ? (
                           <span className="device-chip">
@@ -322,59 +560,61 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
                             <span>{r.deviceId}</span>
                           </span>
                         ) : (
-                          <span style={{ color: '#94a3b8' }}>-</span>
+                          <span style={{ color: '#94a3b8' }}>—</span>
                         )}
                       </td>
 
-                      {/* Latitude Column */}
+                      {/* Column 4: LATITUDE */}
                       <td>
-                        {typeof r.latitude === 'number' && Number.isFinite(r.latitude) ? (
-                          <span className="coord-cell" title={`Latitude: ${r.latitude}`}>
-                            {r.latitude}°
-                          </span>
-                        ) : (
-                          <span style={{ color: '#94a3b8' }}>-</span>
-                        )}
+                        <span className="coord-cell" title={`Latitude: ${r.latitude}`}>
+                          {latFormatted}
+                        </span>
                       </td>
 
-                      {/* Longitude Column */}
+                      {/* Column 5: LONGITUDE */}
                       <td>
-                        {typeof r.longitude === 'number' && Number.isFinite(r.longitude) ? (
-                          <span className="coord-cell" title={`Longitude: ${r.longitude}`}>
-                            {r.longitude}°
-                          </span>
-                        ) : (
-                          <span style={{ color: '#94a3b8' }}>-</span>
-                        )}
+                        <span className="coord-cell" title={`Longitude: ${r.longitude}`}>
+                          {lngFormatted}
+                        </span>
                       </td>
 
-                      {/* Speed Column (Conditional with fallback '-') */}
+                      {/* Column 6: SPEED (Flagged in red if > 80 km/h) */}
                       <td>
                         {isSpeedAvailable ? (
                           <span
                             className={`speed-badge ${
-                              r.speed! > 0 ? 'moving' : 'stopped'
+                              isOverSpeed ? 'overspeed' : r.speed! > 0 ? 'moving' : 'stopped'
                             }`}
                           >
                             <Gauge size={11} />
-                            <span>{r.speed} km/h</span>
+                            <span>
+                              {r.speed!.toFixed(1)} km/h{isOverSpeed ? ' (Overspeed)' : ''}
+                            </span>
                           </span>
                         ) : (
-                          <span style={{ color: '#94a3b8', paddingLeft: '8px' }}>-</span>
+                          <span style={{ color: '#94a3b8' }}>—</span>
                         )}
                       </td>
 
-                      {/* Heading Column (Conditional with fallback '-') */}
+                      {/* Column 7: HEADING */}
                       <td>
                         {isHeadingAvailable ? (
                           <span className="heading-badge">
-                            <Compass size={12} color="#0284c7" />
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                transform: `rotate(${Math.round(r.heading!)}deg)`,
+                                transition: 'transform 0.2s',
+                              }}
+                            >
+                              <Compass size={12} color="#0284c7" />
+                            </span>
                             <span>
                               {Math.round(r.heading!)}° {getHeadingDirection(r.heading!)}
                             </span>
                           </span>
                         ) : (
-                          <span style={{ color: '#94a3b8', paddingLeft: '8px' }}>-</span>
+                          <span style={{ color: '#94a3b8' }}>—</span>
                         )}
                       </td>
                     </tr>
@@ -385,23 +625,18 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
           </table>
         </div>
 
-        {/* Pagination & Row Count Footer */}
+        {/* 4. Pagination: 1 - 15 of 1,420 records with [<] [1] [2] [3] ... [95] [>] */}
         <div className="watchlist-footer">
           <div className="pagination-info">
-            Showing{' '}
-            <strong>
-              {filteredRecords.length === 0 ? 0 : (currentPage - 1) * rowsPerPage + 1}
-            </strong>{' '}
-            to{' '}
-            <strong>
-              {Math.min(currentPage * rowsPerPage, filteredRecords.length)}
-            </strong>{' '}
-            of <strong>{filteredRecords.length}</strong> returned records
+            <span>
+              <strong>{startRecord} - {endRecord}</strong> of{' '}
+              <strong>{filteredRecords.length.toLocaleString()}</strong> records
+            </span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#64748b' }}>
-              <span>Rows per page:</span>
+              <span>Show:</span>
               <select
                 className="rows-per-page-select"
                 value={rowsPerPage}
@@ -411,37 +646,52 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
                 }}
               >
                 <option value={10}>10</option>
+                <option value={15}>15</option>
                 <option value={25}>25</option>
                 <option value={50}>50</option>
                 <option value={100}>100</option>
               </select>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div className="pagination-controls">
               <button
                 type="button"
-                className="btn-secondary"
-                style={{ padding: '5px 10px' }}
+                className="page-btn"
                 disabled={currentPage <= 1}
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 aria-label="Previous page"
               >
-                <ChevronLeft size={14} />
+                <ChevronLeft size={13} />
               </button>
 
-              <span style={{ fontSize: '0.8rem', color: '#475569', minWidth: '60px', textAlign: 'center' }}>
-                Page {currentPage} of {totalPages}
-              </span>
+              {pageNumbers.map((pageNum, idx) => {
+                if (pageNum === '...') {
+                  return (
+                    <span key={`ellipsis-${idx}`} style={{ padding: '0 4px', color: '#94a3b8', fontSize: '0.8rem' }}>
+                      ...
+                    </span>
+                  );
+                }
+                return (
+                  <button
+                    key={`page-${pageNum}`}
+                    type="button"
+                    className={`page-btn ${currentPage === pageNum ? 'active' : ''}`}
+                    onClick={() => setCurrentPage(pageNum)}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
 
               <button
                 type="button"
-                className="btn-secondary"
-                style={{ padding: '5px 10px' }}
+                className="page-btn"
                 disabled={currentPage >= totalPages}
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 aria-label="Next page"
               >
-                <ChevronRight size={14} />
+                <ChevronRight size={13} />
               </button>
             </div>
           </div>

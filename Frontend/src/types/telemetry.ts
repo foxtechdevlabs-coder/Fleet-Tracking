@@ -18,7 +18,11 @@ export interface TelemetryData {
   ignition: boolean;
   engineRpm?: number;
   odometerKm?: number;
+  todayTripKm?: number;
   satelliteCount?: number;
+  signalGrade?: string; // e.g. "4G LTE"
+  csqDbm?: string;      // e.g. "CSQ 24 (-65 dBm)"
+  gnssFixType?: string; // e.g. "3D DGPS"
   recordedAt: string; // ISO string or timestamp
   ingestedAt: string; // ISO string
 }
@@ -31,6 +35,12 @@ export interface Vehicle {
   year: number;
   driverName?: string;
   driverPhone?: string;
+  driverLicense?: string;
+  carrierId?: string;
+  complianceStatus?: string;
+  hardwareModel?: string;
+  imei?: string;
+  firmwareVersion?: string;
   deviceId?: string;
   status: VehicleStatus;
   operationalStatus: OperationalStatus;

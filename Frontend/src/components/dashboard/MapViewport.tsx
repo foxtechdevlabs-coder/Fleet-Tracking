@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import {
   Compass,
@@ -14,9 +14,11 @@ import type { MapViewMode, OperationalStatus } from '../../types/telemetry';
 import { useFleet } from '../../context/FleetContext';
 import { getHeadingCompass, formatTelemetryTime } from '../tracking/TrackingDetailsPanel';
 
-interface MapViewportProps {
+export interface MapViewportProps {
   onAddDeviceClick?: () => void;
   showFloatingTelemetryCard?: boolean;
+  centerTrigger?: number;
+  onVehicleSelect?: (vehicleId: string) => void;
 }
 
 const DEFAULT_CENTER: [number, number] = [12.9716, 77.5946];
@@ -39,11 +41,14 @@ const getStatusColor = (status?: OperationalStatus) => {
 export const MapViewport: React.FC<MapViewportProps> = ({
   onAddDeviceClick,
   showFloatingTelemetryCard = true,
+  centerTrigger,
+  onVehicleSelect,
 }) => {
   const { vehicles, selectedVehicleId, setSelectedVehicleId } = useFleet();
   const mapRef = useRef<HTMLDivElement | null>(null);
   const leafletMapRef = useRef<L.Map | null>(null);
   const markerLayerRef = useRef<L.LayerGroup | null>(null);
+  const hasInitialFitBoundsRef = useRef<boolean>(false);
   const [mapMode, setMapMode] = useState<MapViewMode>('street');
   const [zoomLevel, setZoomLevel] = useState<number>(12);
 
@@ -99,6 +104,32 @@ export const MapViewport: React.FC<MapViewportProps> = ({
     }
   }, [selectedVehicleId, setSelectedVehicleId, vehicles]);
 
+  // Smoothly center/fly to target vehicle coordinates
+  const flyToVehicle = useCallback((targetVehicleId?: string | null) => {
+    const map = leafletMapRef.current;
+    if (!map) return;
+    const targetId = targetVehicleId || selectedVehicleId;
+    const target = vehicles.find((v) => v.id === targetId);
+    if (
+      target?.telemetry &&
+      Number.isFinite(target.telemetry.latitude) &&
+      Number.isFinite(target.telemetry.longitude)
+    ) {
+      map.flyTo([target.telemetry.latitude, target.telemetry.longitude], 15, {
+        animate: true,
+        duration: 1.2,
+      });
+      setZoomLevel(15);
+    }
+  }, [selectedVehicleId, vehicles]);
+
+  // Trigger flyTo when selectedVehicleId changes or when centerTrigger increments
+  useEffect(() => {
+    if (selectedVehicleId) {
+      flyToVehicle(selectedVehicleId);
+    }
+  }, [selectedVehicleId, centerTrigger, flyToVehicle]);
+
   useEffect(() => {
     const map = leafletMapRef.current;
     const layer = markerLayerRef.current;
@@ -122,37 +153,58 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       return;
     }
 
-    const points = validVehicles.map((vehicle) => [
-      vehicle.telemetry!.latitude,
-      vehicle.telemetry!.longitude,
-    ] as [number, number]);
+    // Only fitBounds on initial data arrival
+    if (!hasInitialFitBoundsRef.current) {
+      const points = validVehicles.map((vehicle) => [
+        vehicle.telemetry!.latitude,
+        vehicle.telemetry!.longitude,
+      ] as [number, number]);
 
-    const bounds = L.latLngBounds(points);
-    map.fitBounds(bounds.pad(0.35), { maxZoom: 15, animate: true });
-    setZoomLevel(map.getZoom());
+      const bounds = L.latLngBounds(points);
+      map.fitBounds(bounds.pad(0.35), { maxZoom: 15, animate: true });
+      setZoomLevel(map.getZoom());
+      hasInitialFitBoundsRef.current = true;
+    }
 
     validVehicles.forEach((vehicle) => {
       const speed = vehicle.telemetry?.speed ?? 0;
       const heading = vehicle.telemetry?.heading ?? 0;
+      const isSelected = vehicle.id === selectedVehicleId;
+
+      let callout = `${vehicle.id} (Offline)`;
+      if (vehicle.operationalStatus === 'MOVING') {
+        callout = `${vehicle.id} ${Math.round(speed)} km/h`;
+      } else if (vehicle.operationalStatus === 'STOPPED') {
+        callout = `${vehicle.id} (Idle)`;
+      }
+
       const icon = L.divIcon({
-        className: 'fleet-map-pin',
+        className: `fleet-map-pin ${isSelected ? 'active-marker' : ''}`,
         html: `
-          <span class="fleet-map-pin-core" style="background:${getStatusColor(vehicle.operationalStatus)}"></span>
+          <span class="fleet-map-pin-core" style="background:${getStatusColor(vehicle.operationalStatus)}; ${isSelected ? 'transform: scale(1.3); box-shadow: 0 0 0 4px rgba(2, 132, 199, 0.4);' : ''}"></span>
           <span class="fleet-map-pin-ring" style="border-color:${getStatusColor(vehicle.operationalStatus)}"></span>
         `,
         iconSize: [26, 26],
         iconAnchor: [13, 13],
-        tooltipAnchor: [0, -20],
+        tooltipAnchor: [0, -16],
       });
 
       const marker = L.marker([vehicle.telemetry!.latitude, vehicle.telemetry!.longitude], { icon });
-      marker.bindTooltip(`${vehicle.id} • ${speed} km/h`, {
+      marker.bindTooltip(callout, {
+        permanent: false,
         direction: 'top',
         offset: [0, -14],
         opacity: 0.95,
+        className: 'fleet-map-callout',
       });
+
       marker.on('click', () => {
         setSelectedVehicleId(vehicle.id);
+        onVehicleSelect?.(vehicle.id);
+        map.flyTo([vehicle.telemetry!.latitude, vehicle.telemetry!.longitude], 15, {
+          animate: true,
+          duration: 1.0,
+        });
       });
       marker.addTo(layer);
 
@@ -169,7 +221,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
         interactive: false,
       }).addTo(layer);
     });
-  }, [setSelectedVehicleId, vehicles]);
+  }, [setSelectedVehicleId, vehicles, selectedVehicleId, onVehicleSelect]);
 
   const handleZoom = (direction: 'in' | 'out') => {
     const map = leafletMapRef.current;

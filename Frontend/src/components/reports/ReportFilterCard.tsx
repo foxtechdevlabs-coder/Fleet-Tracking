@@ -199,7 +199,7 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
             className={`preset-chip ${activePreset === '7d' ? 'active' : ''}`}
             onClick={() => handlePresetSelect('7d')}
           >
-            Last 7 Days
+            Last 7 Days (Active)
           </button>
           <button
             type="button"
@@ -217,7 +217,7 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
           <div className="filter-field">
             <label htmlFor="report-vehicle-select" className="filter-label">
               <Truck size={14} />
-              <span>Vehicle Asset</span>
+              <span>Vehicle Select</span>
             </label>
             <div className="filter-control-wrap">
               <select
@@ -229,7 +229,7 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
                 <option value="">All Registered Vehicles</option>
                 {vehicles.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.plateNumber} ({v.make} {v.model}) [{v.id}]
+                    {v.id} [{v.plateNumber}] - {v.make} {v.model}
                   </option>
                 ))}
                 {vehicles.length === 0 && <option value="" disabled>No vehicles available</option>}
@@ -241,7 +241,7 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
           <div className="filter-field">
             <label htmlFor="report-device-select" className="filter-label">
               <Cpu size={14} />
-              <span>Telemetry Device</span>
+              <span>Device Select</span>
             </label>
             <div className="filter-control-wrap">
               <select
@@ -256,7 +256,7 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
                 <option value="">All Bonded Units</option>
                 {availableDevices.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.identifier} {d.vehicleId ? `(Bound to ${d.vehicleId})` : ''}
+                    {d.identifier} (Hardwired Teltonika{d.vehicleId ? ` - ${d.vehicleId}` : ''})
                   </option>
                 ))}
                 {availableDevices.length === 0 && <option value="" disabled>No devices available</option>}
@@ -264,11 +264,11 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
             </div>
           </div>
 
-          {/* Date From */}
+          {/* Date From (IST) */}
           <div className="filter-field">
             <label htmlFor="report-date-from" className="filter-label">
               <Calendar size={14} />
-              <span>Date From</span>
+              <span>Date From (IST)</span>
               <span className="required-dot">*</span>
             </label>
             <div className="filter-control-wrap">
@@ -287,11 +287,11 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
             </div>
           </div>
 
-          {/* Date To */}
+          {/* Date To (IST) */}
           <div className="filter-field">
             <label htmlFor="report-date-to" className="filter-label">
               <Calendar size={14} />
-              <span>Date To</span>
+              <span>Date To (IST)</span>
               <span className="required-dot">*</span>
             </label>
             <div className="filter-control-wrap">

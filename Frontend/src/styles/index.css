@@ -2540,6 +2540,27 @@ input, select, textarea {
   color: var(--text-main);
 }
 
+.center-map-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-cyan-light);
+  color: var(--accent-cyan-dark);
+  border: 1px solid rgba(2, 132, 199, 0.25);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.center-map-btn:hover {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0284c7;
+}
+
 /* Stream Status Ribbon */
 .telemetry-stream-banner {
   padding: 8px 16px;
@@ -3462,6 +3483,18 @@ input, select, textarea {
   background: var(--status-offline-bg);
   color: var(--text-muted);
   border: 1px solid var(--status-offline-border);
+}
+
+.speed-badge.overspeed {
+  background: var(--status-critical-bg);
+  color: #b91c1c;
+  border: 1px solid var(--status-critical-border);
+  font-weight: 700;
+}
+
+.report-meta-value.alert-speed {
+  color: #dc2626 !important;
+  font-weight: 700;
 }
 
 .heading-badge {

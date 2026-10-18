@@ -134,7 +134,7 @@ export const ReportsPage: React.FC = () => {
           </p>
         </div>
         <div className="report-capabilities" aria-label="Report export availability">
-          <span className="report-capability available"><Shield size={13} /> Excel available</span>
+          <span className="report-capability available"><Shield size={13} /> Excel &amp; CSV available</span>
           <span className="report-capability unavailable"><Shield size={13} /> PDF unavailable</span>
         </div>
       </div>
@@ -156,6 +156,39 @@ export const ReportsPage: React.FC = () => {
         </div>
       )}
 
+      {/* When data is not yet generated or records is 0, keep export buttons visible in toolbar in disabled state */}
+      {queryState !== 'success' && (
+        <div
+          className="reports-export-toolbar"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: '10px',
+            padding: '4px 0',
+          }}
+          aria-label="Report Export Actions"
+        >
+          <button
+            type="button"
+            className="export-btn"
+            disabled
+            title="Generate a report to enable export"
+          >
+            <Shield size={14} style={{ display: 'none' }} />
+            <span>Export CSV (.csv)</span>
+          </button>
+          <button
+            type="button"
+            className="export-btn"
+            disabled
+            title="Generate a report to enable export"
+          >
+            <span>Export Excel (.xlsx)</span>
+          </button>
+        </div>
+      )}
+
       {/* State Transitions Container */}
       {queryState === 'idle' && <ReportInitialState />}
 
@@ -172,7 +205,9 @@ export const ReportsPage: React.FC = () => {
         />
       )}
 
-      {queryState === 'success' && <ReportResultsTable records={records} />}
+      {queryState === 'success' && (
+        <ReportResultsTable records={records} filter={activeFilter} />
+      )}
     </div>
   );
 };
