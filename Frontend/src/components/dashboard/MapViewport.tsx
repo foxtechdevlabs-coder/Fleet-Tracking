@@ -30,7 +30,7 @@ const getStatusColor = (status?: OperationalStatus) => {
     case 'STOPPED':
       return '#f59e0b';
     case 'OFFLINE':
-      return '#64748b';
+      return '#ef4444';
     case 'MAINTENANCE':
       return '#8b5cf6';
     default:
@@ -171,11 +171,15 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       const heading = vehicle.telemetry?.heading ?? 0;
       const isSelected = vehicle.id === selectedVehicleId;
 
-      let callout = `${vehicle.id} (Offline)`;
+      let callout = `${vehicle.id} • Offline`;
       if (vehicle.operationalStatus === 'MOVING') {
-        callout = `${vehicle.id} ${Math.round(speed)} km/h`;
+        const compass = getHeadingCompass(heading);
+        const headingPart = compass.cardinal !== '—' ? ` • ${compass.degrees}° ${compass.cardinal}` : '';
+        callout = `${vehicle.id} • ${Math.round(speed)} km/h${headingPart}`;
       } else if (vehicle.operationalStatus === 'STOPPED') {
-        callout = `${vehicle.id} (Idle)`;
+        callout = `${vehicle.id} • Idle (0 km/h)`;
+      } else if (vehicle.operationalStatus === 'MAINTENANCE') {
+        callout = `${vehicle.id} • Maintenance`;
       }
 
       const icon = L.divIcon({
@@ -208,18 +212,21 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       });
       marker.addTo(layer);
 
-      const rotation = Number.isFinite(heading) ? heading : 0;
-      const arrowIcon = L.divIcon({
-        className: 'fleet-map-pin-arrow',
-        html: `<span style="transform: rotate(${rotation}deg)"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 2 L13 11 L8 9 L3 11 Z" fill="${getStatusColor(vehicle.operationalStatus)}"/></svg></span>`,
-        iconSize: [18, 18],
-        iconAnchor: [9, 9],
-      });
+      // Only draw directional arrow marker if vehicle is active with valid heading
+      if (vehicle.operationalStatus !== 'OFFLINE' && Number.isFinite(heading)) {
+        const rotation = heading;
+        const arrowIcon = L.divIcon({
+          className: 'fleet-map-pin-arrow',
+          html: `<span style="transform: rotate(${rotation}deg)"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 2 L13 11 L8 9 L3 11 Z" fill="${getStatusColor(vehicle.operationalStatus)}"/></svg></span>`,
+          iconSize: [18, 18],
+          iconAnchor: [9, 9],
+        });
 
-      L.marker([vehicle.telemetry!.latitude, vehicle.telemetry!.longitude], {
-        icon: arrowIcon,
-        interactive: false,
-      }).addTo(layer);
+        L.marker([vehicle.telemetry!.latitude, vehicle.telemetry!.longitude], {
+          icon: arrowIcon,
+          interactive: false,
+        }).addTo(layer);
+      }
     });
   }, [setSelectedVehicleId, vehicles, selectedVehicleId, onVehicleSelect]);
 

@@ -280,7 +280,11 @@ export const TelemetryWatchlist: React.FC = () => {
                   {isColVisible('speedHeading') && (
                     <td>
                       <div className="speed-cell">
-                        <span>{v.telemetry?.speed ?? 0} km/h</span>
+                        <span>
+                          {v.telemetry && typeof v.telemetry.speed === 'number' && Number.isFinite(v.telemetry.speed)
+                            ? `${Math.round(v.telemetry.speed)} km/h`
+                            : '—'}
+                        </span>
                       </div>
                       <div style={{
                         display: 'flex',
@@ -290,29 +294,41 @@ export const TelemetryWatchlist: React.FC = () => {
                         color: '#64748b'
                       }}>
                         <Compass size={11} />
-                        <span>{v.telemetry?.heading ?? 0}° Heading</span>
+                        <span>
+                          {v.telemetry && typeof v.telemetry.heading === 'number' && Number.isFinite(v.telemetry.heading)
+                            ? `${Math.round(v.telemetry.heading)}° Heading`
+                            : '—'}
+                        </span>
                       </div>
                     </td>
                   )}
 
                   {isColVisible('lastIngestion') && (
                     <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: '#64748b' }}>
-                      {v.telemetry?.ingestedAt
-                        ? new Date(v.telemetry.ingestedAt).toLocaleTimeString('en-IN', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                            hour12: false,
-                          }) + ' IST'
-                        : 'Just now'}
+                      {(() => {
+                        const timeStr = v.telemetry?.ingestedAt || v.telemetry?.recordedAt;
+                        if (!timeStr) return v.operationalStatus === 'OFFLINE' ? 'Signal Stale' : 'Just now';
+                        const d = new Date(timeStr);
+                        if (isNaN(d.getTime())) return 'Signal Stale';
+                        return d.toLocaleTimeString('en-IN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                          hour12: false,
+                        }) + ' IST';
+                      })()}
                     </td>
                   )}
 
                   {isColVisible('coordinates') && (
                     <td className="coord-cell">
-                      {v.telemetry
-                        ? `${v.telemetry.latitude.toFixed(4)}° N, ${v.telemetry.longitude.toFixed(4)}° E`
-                        : 'Awaiting Fix'}
+                      {v.telemetry &&
+                      typeof v.telemetry.latitude === 'number' &&
+                      Number.isFinite(v.telemetry.latitude) &&
+                      typeof v.telemetry.longitude === 'number' &&
+                      Number.isFinite(v.telemetry.longitude)
+                        ? `${Math.abs(v.telemetry.latitude).toFixed(4)}° ${v.telemetry.latitude >= 0 ? 'N' : 'S'}, ${Math.abs(v.telemetry.longitude).toFixed(4)}° ${v.telemetry.longitude >= 0 ? 'E' : 'W'}`
+                        : '—'}
                     </td>
                   )}
 

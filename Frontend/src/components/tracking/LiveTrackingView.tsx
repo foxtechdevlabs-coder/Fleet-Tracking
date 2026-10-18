@@ -131,8 +131,11 @@ export const LiveTrackingView: React.FC = () => {
           ) : (
             filteredVehicles.map((vehicle) => {
               const isSelected = selectedVehicle?.id === vehicle.id;
+              const isOffline = vehicle.operationalStatus === 'OFFLINE';
               const hasTelemetry = Boolean(
                 vehicle.telemetry &&
+                  typeof vehicle.telemetry.latitude === 'number' &&
+                  typeof vehicle.telemetry.longitude === 'number' &&
                   Number.isFinite(vehicle.telemetry.latitude) &&
                   Number.isFinite(vehicle.telemetry.longitude),
               );
@@ -151,13 +154,15 @@ export const LiveTrackingView: React.FC = () => {
                 ? `${headingInfo.degrees}° ${headingInfo.cardinal}`
                 : '—';
 
-              const lastPing = hasTelemetry
-                ? formatTelemetryTime(vehicle.telemetry?.recordedAt || vehicle.telemetry?.ingestedAt).relative
-                : 'Awaiting Fix';
+              const timeFormatted = formatTelemetryTime(vehicle.telemetry?.recordedAt || vehicle.telemetry?.ingestedAt);
+              const isSignalStale = isOffline || timeFormatted.isStale;
+              const lastPing = vehicle.telemetry?.recordedAt || vehicle.telemetry?.ingestedAt
+                ? timeFormatted.relative
+                : 'No Handshake';
 
               const corridor = hasTelemetry
-                ? `${Math.abs(vehicle.telemetry!.latitude).toFixed(2)}° N, ${Math.abs(vehicle.telemetry!.longitude).toFixed(2)}° E`
-                : 'Awaiting GPS';
+                ? `Last GNSS: ${Math.abs(vehicle.telemetry!.latitude).toFixed(2)}° N, ${Math.abs(vehicle.telemetry!.longitude).toFixed(2)}° E`
+                : 'Location Unavailable';
 
               const modelClass = [vehicle.make, vehicle.model].filter(Boolean).join(' ') || '—';
 
@@ -166,7 +171,7 @@ export const LiveTrackingView: React.FC = () => {
                   key={vehicle.id}
                   id={`asset-card-${vehicle.id}`}
                   type="button"
-                  className={`matrix-card ${isSelected ? 'selected' : ''}`}
+                  className={`matrix-card ${isSelected ? 'selected' : ''} ${isOffline ? 'is-offline' : ''}`}
                   onClick={() => {
                     setSelectedVehicleId(vehicle.id);
                     setCenterTrigger((prev) => prev + 1);
@@ -175,7 +180,10 @@ export const LiveTrackingView: React.FC = () => {
                   <div className="matrix-card-header">
                     <div className="vehicle-mini-icon"><Truck size={14} /></div>
                     <div className="matrix-card-meta">
-                      <span className="matrix-vehicle-id">{vehicle.id}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span className="matrix-vehicle-id">{vehicle.id}</span>
+                        {isSignalStale && <span className="signal-stale-tag">Signal Stale</span>}
+                      </div>
                       <span className="matrix-plate">{vehicle.plateNumber}</span>
                     </div>
                     <span className={`matrix-speed ${vehicle.operationalStatus.toLowerCase()}`}>

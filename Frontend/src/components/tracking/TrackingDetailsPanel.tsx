@@ -39,12 +39,19 @@ export interface TrackingDetailsPanelProps {
 /**
  * Calculates compass cardinal direction from degrees (0 - 360) with both abbreviated and full cardinal names.
  */
-export function getHeadingCompass(heading?: number | null): {
+export function getHeadingCompass(heading?: number | null, isOffline?: boolean): {
   degrees: number | null;
   cardinal: string;
   fullName: string;
 } {
-  if (heading === undefined || heading === null || isNaN(heading)) {
+  if (
+    isOffline ||
+    heading === undefined ||
+    heading === null ||
+    typeof heading !== 'number' ||
+    isNaN(heading) ||
+    !Number.isFinite(heading)
+  ) {
     return { degrees: null, cardinal: '—', fullName: '—' };
   }
   const normalized = ((Math.round(heading) % 360) + 360) % 360;
@@ -82,8 +89,8 @@ export function formatCoordinates(lat?: number | null, lng?: number | null): {
   lngDisplay: string;
   hasCoordinates: boolean;
 } {
-  const hasLat = lat !== undefined && lat !== null && Number.isFinite(lat);
-  const hasLng = lng !== undefined && lng !== null && Number.isFinite(lng);
+  const hasLat = typeof lat === 'number' && Number.isFinite(lat);
+  const hasLng = typeof lng === 'number' && Number.isFinite(lng);
 
   if (!hasLat || !hasLng) {
     return {
@@ -106,12 +113,19 @@ export function formatCoordinates(lat?: number | null, lng?: number | null): {
 /**
  * Formats speed in km/h
  */
-export function formatSpeed(speed?: number | null): {
+export function formatSpeed(speed?: number | null, isOffline?: boolean): {
   speedDisplay: string;
   isMoving: boolean;
   numericSpeed: number;
 } {
-  if (speed === undefined || speed === null || isNaN(speed)) {
+  if (
+    isOffline ||
+    speed === undefined ||
+    speed === null ||
+    typeof speed !== 'number' ||
+    isNaN(speed) ||
+    !Number.isFinite(speed)
+  ) {
     return { speedDisplay: '—', isMoving: false, numericSpeed: 0 };
   }
   const rounded = Math.max(0, Math.round(speed));
@@ -123,32 +137,43 @@ export function formatSpeed(speed?: number | null): {
 }
 
 /**
- * Formats relative and localized absolute timestamp from real ISO date strings
+ * Formats relative and localized absolute timestamp from real ISO date strings with staleness detection.
  */
-export function formatTelemetryTime(dateStr?: string): { relative: string; absolute: string } {
+export function formatTelemetryTime(dateStr?: string): { relative: string; absolute: string; isStale: boolean } {
   if (!dateStr) {
-    return { relative: 'Awaiting timestamp', absolute: '—' };
+    return { relative: 'No Handshake', absolute: '—', isStale: true };
   }
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) {
-    return { relative: 'Awaiting timestamp', absolute: '—' };
+    return { relative: 'No Handshake', absolute: '—', isStale: true };
   }
   const now = Date.now();
   const diffSec = Math.floor((now - date.getTime()) / 1000);
 
+  if (diffSec < 0) {
+    return {
+      relative: 'Just now',
+      absolute: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      isStale: false,
+    };
+  }
+
+  const isStale = diffSec >= 1800; // >= 30 mins indicates stale fix
   let relative = 'Just now';
-  if (diffSec < 5 && diffSec >= 0) {
+
+  if (diffSec < 10) {
     relative = 'Just now';
-  } else if (diffSec < 60 && diffSec >= 0) {
+  } else if (diffSec < 60) {
     relative = `${diffSec}s ago`;
-  } else if (diffSec < 3600 && diffSec >= 0) {
+  } else if (diffSec < 3600) {
     const mins = Math.floor(diffSec / 60);
     relative = `${mins}m ago`;
-  } else if (diffSec < 86400 && diffSec >= 0) {
+  } else if (diffSec < 86400) {
     const hrs = Math.floor(diffSec / 3600);
-    relative = `${hrs}h ago`;
+    relative = `${hrs} hr${hrs > 1 ? 's' : ''} ago`;
   } else {
-    relative = date.toLocaleDateString();
+    const days = Math.floor(diffSec / 86400);
+    relative = `${days} day${days > 1 ? 's' : ''} ago`;
   }
 
   const absolute = date.toLocaleTimeString([], {
@@ -157,7 +182,7 @@ export function formatTelemetryTime(dateStr?: string): { relative: string; absol
     second: '2-digit',
   });
 
-  return { relative, absolute };
+  return { relative, absolute, isStale };
 }
 
 /**
@@ -211,9 +236,10 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
   }
 
   const telemetry = activeVehicle.telemetry;
+  const isOffline = activeVehicle.operationalStatus === 'OFFLINE';
   const statusInfo = getStatusStyle(activeVehicle.operationalStatus);
-  const speedInfo = formatSpeed(telemetry?.speed);
-  const headingInfo = getHeadingCompass(telemetry?.heading);
+  const speedInfo = formatSpeed(telemetry?.speed, isOffline);
+  const headingInfo = getHeadingCompass(telemetry?.heading, isOffline);
   const coordInfo = formatCoordinates(telemetry?.latitude, telemetry?.longitude);
   const lastUpdated = formatTelemetryTime(telemetry?.recordedAt || telemetry?.ingestedAt || activeVehicle.updatedAt);
   const hasTelemetry = coordInfo.hasCoordinates;
@@ -299,22 +325,38 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
           <FileCheck2 size={13} color="#0d9488" />
           <span>Compliance: <strong>{complianceStatus}</strong></span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: isOffline || lastUpdated.isStale ? '#b91c1c' : '#64748b' }}>
           <Clock size={11} />
-          <span>Ping: {lastUpdated.relative}</span>
+          <span>Ping: {lastUpdated.relative}{isOffline || lastUpdated.isStale ? ' (Signal Stale)' : ''}</span>
         </div>
       </div>
 
       {/* 2. Stream Status Ribbon */}
-      <div className={`telemetry-stream-banner ${hasTelemetry ? 'active' : 'awaiting'}`}>
+      <div className={`telemetry-stream-banner ${isOffline ? 'offline' : hasTelemetry ? 'active' : 'awaiting'}`}>
         <div className="stream-indicator">
-          {hasTelemetry ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+          {isOffline ? (
+            <AlertCircle size={14} color="#ef4444" />
+          ) : hasTelemetry ? (
+            <CheckCircle2 size={14} />
+          ) : (
+            <AlertCircle size={14} />
+          )}
           <span>
-            {hasTelemetry ? 'Live GNSS Fix Acquired' : 'Awaiting GPS Fix — Signal Pending'}
+            {isOffline
+              ? 'Signal Stale — Device Offline'
+              : hasTelemetry
+              ? 'Live GNSS Fix Acquired'
+              : 'Awaiting GPS Fix — Signal Pending'}
           </span>
         </div>
         <div className="stream-timestamp">
-          <span>{hasTelemetry ? (telemetry?.gnssFixType || '3D DGPS Fix') : 'No Fix'}</span>
+          <span>
+            {isOffline
+              ? (hasTelemetry ? `Last Fix: ${lastUpdated.relative}` : 'No Handshake')
+              : hasTelemetry
+              ? (telemetry?.gnssFixType || '3D DGPS Fix')
+              : 'Awaiting Signal'}
+          </span>
         </div>
       </div>
 
@@ -339,11 +381,11 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
               <div className="speed-meter-track" aria-hidden="true">
                 <div
                   className="speed-meter-fill"
-                  style={{ width: `${Math.min(100, (speedInfo.numericSpeed / 120) * 100)}%` }}
+                  style={{ width: `${isOffline ? 0 : Math.min(100, (speedInfo.numericSpeed / 120) * 100)}%` }}
                 />
               </div>
               <span className="metric-subtext">
-                {speedInfo.isMoving ? 'In Transit' : 'Stationary'}
+                {isOffline ? 'Offline / Signal Stale' : speedInfo.isMoving ? 'In Transit' : 'Stationary'}
               </span>
             </div>
 
@@ -367,7 +409,11 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
                 <span className="metric-tag">{headingInfo.cardinal}</span>
               </div>
               <span className="metric-subtext">
-                {headingInfo.degrees !== null ? `Heading: ${headingInfo.fullName}` : 'Awaiting bearing'}
+                {isOffline
+                  ? 'Signal Stale'
+                  : headingInfo.degrees !== null
+                  ? `Heading: ${headingInfo.fullName}`
+                  : 'Awaiting bearing'}
               </span>
             </div>
 
@@ -403,9 +449,11 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
                 </div>
               </div>
               <span className="metric-subtext">
-                {hasTelemetry
-                  ? (telemetry?.gnssFixType || (telemetry?.satelliteCount ? `3D DGPS / ${telemetry.satelliteCount} Sats Fix` : '3D DGPS / Sats'))
-                  : '—'}
+                {isOffline
+                  ? (hasTelemetry ? `Last known fix (${lastUpdated.relative})` : 'Location Unavailable / Awaiting GPS Fix')
+                  : (hasTelemetry
+                    ? (telemetry?.gnssFixType || (telemetry?.satelliteCount ? `3D DGPS / ${telemetry.satelliteCount} Sats Fix` : '3D DGPS / Sats'))
+                    : 'Awaiting GPS Fix')}
               </span>
             </div>
 
@@ -417,13 +465,15 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
               </div>
               <div className="metric-value-wrap">
                 <span className="metric-value">
-                  {telemetry?.odometerKm !== undefined && telemetry.odometerKm !== null
+                  {telemetry?.odometerKm !== undefined && telemetry.odometerKm !== null && Number.isFinite(telemetry.odometerKm)
                     ? `${telemetry.odometerKm.toLocaleString()} km`
                     : '—'}
                 </span>
               </div>
               <span className="metric-subtext">
-                {telemetry?.todayTripKm !== undefined && telemetry.todayTripKm !== null
+                {isOffline
+                  ? 'Trip: —'
+                  : telemetry?.todayTripKm !== undefined && telemetry.todayTripKm !== null && Number.isFinite(telemetry.todayTripKm)
                   ? `Trip: ${telemetry.todayTripKm.toLocaleString()} km today`
                   : 'Trip: —'}
               </span>
@@ -437,11 +487,11 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
               </div>
               <div className="metric-value-wrap">
                 <span className="metric-value">
-                  {telemetry?.signalGrade || (hasTelemetry ? '4G LTE' : '—')}
+                  {isOffline ? 'Offline' : (telemetry?.signalGrade || (hasTelemetry ? '4G LTE' : '—'))}
                 </span>
               </div>
               <span className="metric-subtext">
-                {telemetry?.csqDbm || (hasTelemetry ? 'CSQ 24 (-65 dBm)' : '—')}
+                {isOffline ? 'Signal Stale (No Handshake)' : (telemetry?.csqDbm || (hasTelemetry ? 'CSQ 24 (-65 dBm)' : '—'))}
               </span>
             </div>
           </div>

@@ -1735,6 +1735,36 @@ input, select, textarea {
   border-color: rgba(2, 132, 199, 0.25);
 }
 
+.matrix-card.is-offline {
+  background: #fbfbfd;
+  border-color: rgba(239, 68, 68, 0.22);
+  opacity: 0.9;
+}
+
+.matrix-card.is-offline:hover {
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+.matrix-card.is-offline.selected {
+  border-color: rgba(239, 68, 68, 0.65);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+}
+
+.signal-stale-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.08);
+  color: #dc2626;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
 .matrix-card-header {
   display: flex;
   align-items: center;
@@ -2582,6 +2612,12 @@ input, select, textarea {
   background: var(--status-stopped-bg);
   border-bottom-color: var(--status-stopped-border);
   color: #92400e;
+}
+
+.telemetry-stream-banner.offline {
+  background: var(--status-offline-bg);
+  border-bottom-color: var(--status-offline-border);
+  color: #991b1b;
 }
 
 .stream-indicator {
