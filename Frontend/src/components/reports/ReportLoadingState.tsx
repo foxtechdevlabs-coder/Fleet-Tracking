@@ -26,7 +26,7 @@ export const ReportLoadingState: React.FC<ReportLoadingStateProps> = ({ rows = 6
         <table className="watchlist-table">
           <thead>
             <tr>
-              <th>Date &amp; Time (IST)</th>
+              <th>Date / Time</th>
               <th>Vehicle Asset</th>
               <th>Device Identifier</th>
               <th>Latitude</th>

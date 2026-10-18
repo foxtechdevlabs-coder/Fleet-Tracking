@@ -89,6 +89,13 @@ export interface TrackingReportFilter {
   dateTo: string;   // ISO string or YYYY-MM-DDTHH:mm
 }
 
+export interface ReportVehicleOption {
+  id: string;
+  plateNumber: string;
+  make: string;
+  model: string;
+}
+
 export interface TrackingReportRecord {
   id?: string;
   recordedAt: string; // ISO timestamp
@@ -116,6 +123,6 @@ export interface TrackingReportResponse {
 export interface DeviceSummary {
   id: string;
   identifier: string;
-  vehicleId?: string;
+  vehicleId?: string | null;
   status: 'active' | 'inactive' | 'unassigned' | string;
 }

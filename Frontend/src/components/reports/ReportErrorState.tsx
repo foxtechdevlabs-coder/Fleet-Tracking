@@ -5,21 +5,25 @@ interface ReportErrorStateProps {
   error: string;
   onRetry: () => void;
   isRetrying?: boolean;
+  isUnavailable?: boolean;
 }
 
 export const ReportErrorState: React.FC<ReportErrorStateProps> = ({
   error,
   onRetry,
   isRetrying = false,
+  isUnavailable = false,
 }) => {
   return (
-    <div className="report-error-card" role="alert" aria-live="assertive">
+    <div className={`report-error-card${isUnavailable ? ' unavailable' : ''}`} role="alert" aria-live="assertive">
       <div className="report-error-left">
         <div className="report-error-icon">
           <AlertTriangle size={20} />
         </div>
         <div>
-          <h3 className="report-error-title">Failed to Generate Tracking Report</h3>
+          <h3 className="report-error-title">
+            {isUnavailable ? 'Tracking Report API Unavailable' : 'Failed to Generate Tracking Report'}
+          </h3>
           <p className="report-error-desc">
             {error || 'Unable to retrieve telemetry points from server. The reports microservice may be temporarily offline or unreachable.'}
           </p>

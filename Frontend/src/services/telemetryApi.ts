@@ -10,6 +10,7 @@ import type {
   TrackingReportFilter,
   TrackingReportRecord,
   DeviceSummary,
+  ReportVehicleOption,
 } from '../types/telemetry';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -118,25 +119,70 @@ export function computeFleetMetrics(vehicles: Vehicle[]): FleetSummaryMetrics {
   };
 }
 
-export async function fetchDevices(): Promise<DeviceSummary[]> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/devices`, {
+async function fetchReportCatalog<T>(path: string, label: string): Promise<T[]> {
+  const records: T[] = [];
+  const limit = 100;
+  let page = 1;
+
+  while (true) {
+    const response = await fetch(`${API_BASE_URL}${path}?page=${page}&limit=${limit}`, {
       headers: { 'Accept': 'application/json' },
     });
-    if (!res.ok) {
-      const fallback = await fetch(`${API_BASE_URL}/v1/devices`, {
-        headers: { 'Accept': 'application/json' },
-      });
-      if (!fallback.ok) return [];
-      const json = await fallback.json();
-      return Array.isArray(json) ? json : json.data || [];
+    if (!response.ok) {
+      let message = `${label} could not be loaded (HTTP ${response.status}).`;
+      try {
+        const body: unknown = await response.json();
+        if (typeof body === 'object' && body !== null) {
+          if ('message' in body && typeof body.message === 'string') message = body.message;
+          else if ('error' in body && typeof body.error === 'string') message = body.error;
+        }
+      } catch {
+        // Keep the status-based message when the error response has no JSON body.
+      }
+      throw new Error(message);
     }
-    const json = await res.json();
-    return Array.isArray(json) ? json : json.data || [];
-  } catch {
-    return [];
+
+    const body: unknown = await response.json();
+    const data = Array.isArray(body)
+      ? body
+      : typeof body === 'object' && body !== null && 'data' in body && Array.isArray(body.data)
+        ? body.data
+        : null;
+    if (!data) throw new Error(`${label} returned an unsupported response format.`);
+    records.push(...(data as T[]));
+
+    const meta = typeof body === 'object' && body !== null && 'meta' in body ? body.meta : null;
+    const total = typeof meta === 'object' && meta !== null && 'total' in meta && typeof meta.total === 'number'
+      ? meta.total
+      : null;
+    if (total === null || records.length >= total || data.length === 0) return records;
+    page += 1;
   }
 }
+
+export async function fetchReportVehicles(): Promise<ReportVehicleOption[]> {
+  const vehicles = await fetchReportCatalog<unknown>('/vehicles', 'Vehicle options');
+  return vehicles.filter((vehicle): vehicle is ReportVehicleOption => (
+    typeof vehicle === 'object' && vehicle !== null &&
+    'id' in vehicle && typeof vehicle.id === 'string' &&
+    'plateNumber' in vehicle && typeof vehicle.plateNumber === 'string' &&
+    'make' in vehicle && typeof vehicle.make === 'string' &&
+    'model' in vehicle && typeof vehicle.model === 'string'
+  ));
+}
+
+export async function fetchDevices(): Promise<DeviceSummary[]> {
+  const devices = await fetchReportCatalog<unknown>('/v1/devices', 'Device options');
+  return devices.filter((device): device is DeviceSummary => (
+    typeof device === 'object' && device !== null &&
+    'id' in device && typeof device.id === 'string' &&
+    'identifier' in device && typeof device.identifier === 'string' &&
+    'status' in device && typeof device.status === 'string' &&
+    (!('vehicleId' in device) || typeof device.vehicleId === 'string' || device.vehicleId === null)
+  ));
+}
+
+export class ReportApiUnavailableError extends Error {}
 
 export async function fetchTrackingReport(
   filters: TrackingReportFilter,
@@ -159,8 +205,8 @@ export async function fetchTrackingReport(
     });
 
     if (!res.ok) {
-      if (res.status === 404) {
-        throw new Error('Historical tracking reports are not available: the backend does not expose GET /api/reports/tracking yet.');
+      if (res.status === 404 || res.status === 501) {
+        throw new ReportApiUnavailableError('Historical tracking reports are unavailable: the backend does not expose GET /api/reports/tracking yet.');
       }
 
       let errorMessage = `HTTP ${res.status}: ${res.statusText || 'Failed to retrieve tracking report'}`;
@@ -193,6 +239,10 @@ export async function fetchTrackingReport(
   } catch (error: unknown) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw error;
+    }
+    if (error instanceof ReportApiUnavailableError) throw error;
+    if (error instanceof TypeError) {
+      throw new ReportApiUnavailableError('The tracking report service could not be reached. Check the backend connection and try again.');
     }
     if (error instanceof Error) {
       throw error;

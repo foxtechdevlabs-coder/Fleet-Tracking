@@ -330,7 +330,7 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
                       <td>
                         {typeof r.latitude === 'number' && Number.isFinite(r.latitude) ? (
                           <span className="coord-cell" title={`Latitude: ${r.latitude}`}>
-                            {r.latitude.toFixed(5)}°
+                            {r.latitude}°
                           </span>
                         ) : (
                           <span style={{ color: '#94a3b8' }}>-</span>
@@ -341,7 +341,7 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records 
                       <td>
                         {typeof r.longitude === 'number' && Number.isFinite(r.longitude) ? (
                           <span className="coord-cell" title={`Longitude: ${r.longitude}`}>
-                            {r.longitude.toFixed(5)}°
+                            {r.longitude}°
                           </span>
                         ) : (
                           <span style={{ color: '#94a3b8' }}>-</span>

@@ -2220,6 +2220,59 @@ input, select, textarea {
 }
 
 @media (max-width: 720px) {
+  .app-sidebar {
+    width: 68px;
+    flex-basis: 68px;
+  }
+
+  .sidebar-header {
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 4px;
+  }
+
+  .sidebar-brand-text,
+  .phase-badge,
+  .sidebar-section-title,
+  .sidebar-nav-item > span,
+  .sidebar-security-badge,
+  .sidebar-footer {
+    display: none;
+  }
+
+  .sidebar-nav {
+    padding: 8px 6px;
+  }
+
+  .sidebar-nav-item {
+    justify-content: center;
+    padding: 11px 8px;
+  }
+
+  .page-container {
+    padding: 16px 12px 32px;
+    gap: 18px;
+  }
+
+  .top-nav {
+    height: auto;
+    min-height: var(--topnav-height);
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 12px;
+  }
+
+  .top-nav-left,
+  .top-nav-right {
+    gap: 8px;
+  }
+
+  .connection-pill,
+  .ist-clock,
+  .user-details {
+    display: none;
+  }
+
   .telemetry-grid {
     grid-template-columns: 1fr;
   }
@@ -3297,6 +3350,41 @@ input, select, textarea {
   flex-wrap: wrap;
   gap: 16px;
   box-shadow: var(--shadow-sm);
+}
+
+.report-error-card.unavailable {
+  border-color: var(--border-focus);
+  border-left-color: var(--accent-cyan);
+  background: var(--bg-subtle);
+}
+
+.report-error-card.unavailable .report-error-icon {
+  background: var(--accent-cyan-light);
+  color: var(--accent-cyan-dark);
+}
+
+.report-error-card.unavailable .report-error-title,
+.report-error-card.unavailable .report-error-desc {
+  color: var(--text-secondary);
+}
+
+.report-catalog-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid var(--status-stopped-border);
+  border-radius: var(--radius-md);
+  background: var(--status-stopped-bg);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.report-catalog-warning svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--status-stopped);
 }
 
 .report-error-left {

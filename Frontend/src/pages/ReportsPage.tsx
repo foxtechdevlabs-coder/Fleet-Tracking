@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { FileBarChart, Shield } from 'lucide-react';
-import { useFleet } from '../context/FleetContext';
-import { fetchDevices, fetchTrackingReport } from '../services/telemetryApi';
-import type { DeviceSummary, TrackingReportFilter, TrackingReportRecord } from '../types/telemetry';
+import { fetchDevices, fetchReportVehicles, fetchTrackingReport, ReportApiUnavailableError } from '../services/telemetryApi';
+import type { DeviceSummary, ReportVehicleOption, TrackingReportFilter, TrackingReportRecord } from '../types/telemetry';
 import { ReportFilterCard } from '../components/reports/ReportFilterCard';
 import { ReportInitialState } from '../components/reports/ReportInitialState';
 import { ReportLoadingState } from '../components/reports/ReportLoadingState';
@@ -10,11 +9,12 @@ import { ReportEmptyState } from '../components/reports/ReportEmptyState';
 import { ReportErrorState } from '../components/reports/ReportErrorState';
 import { ReportResultsTable } from '../components/reports/ReportResultsTable';
 
-type ReportQueryState = 'idle' | 'loading' | 'success' | 'empty' | 'error';
+type ReportQueryState = 'idle' | 'loading' | 'success' | 'empty' | 'error' | 'unavailable';
 
 export const ReportsPage: React.FC = () => {
-  const { vehicles } = useFleet();
+  const [vehicles, setVehicles] = useState<ReportVehicleOption[]>([]);
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [queryState, setQueryState] = useState<ReportQueryState>('idle');
   const [records, setRecords] = useState<TrackingReportRecord[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -24,20 +24,18 @@ export const ReportsPage: React.FC = () => {
   // Abort controller ref to cancel in-flight queries if filter changes
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Fetch registered devices for the filter selector
+  // Fetch actual registered filter options from the paginated backend resources.
   useEffect(() => {
     let isMounted = true;
-    const loadDevices = async () => {
-      try {
-        const fetchedDevices = await fetchDevices();
-        if (isMounted) {
-          setDevices(fetchedDevices);
-        }
-      } catch {
-        // Fall back gracefully if devices endpoint isn't ready
-      }
-    };
-    loadDevices();
+    Promise.allSettled([fetchReportVehicles(), fetchDevices()]).then(([vehicleResult, deviceResult]) => {
+      if (!isMounted) return;
+      if (vehicleResult.status === 'fulfilled') setVehicles(vehicleResult.value);
+      if (deviceResult.status === 'fulfilled') setDevices(deviceResult.value);
+      const failures = [vehicleResult, deviceResult]
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map((result) => result.reason instanceof Error ? result.reason.message : 'A filter option list could not be loaded.');
+      setCatalogError(failures.length ? `Filter options are incomplete. ${failures.join(' ')}` : null);
+    });
     return () => {
       isMounted = false;
     };
@@ -88,7 +86,7 @@ export const ReportsPage: React.FC = () => {
       const msg = err instanceof Error ? err.message : 'Failed to query telemetry records from server.';
       setRecords([]);
       setErrorMessage(msg);
-      setQueryState('error');
+      setQueryState(err instanceof ReportApiUnavailableError ? 'unavailable' : 'error');
     } finally {
       setIsRetrying(false);
     }
@@ -100,6 +98,15 @@ export const ReportsPage: React.FC = () => {
       handleGenerateReport(activeFilter, true);
     }
   }, [activeFilter, handleGenerateReport]);
+
+  const handleFiltersChange = useCallback(() => {
+    abortControllerRef.current?.abort();
+    setActiveFilter(null);
+    setRecords([]);
+    setErrorMessage(null);
+    setIsRetrying(false);
+    setQueryState('idle');
+  }, []);
 
   // Reset back to initial idle state
   const handleReset = useCallback(() => {
@@ -138,8 +145,16 @@ export const ReportsPage: React.FC = () => {
         devices={devices}
         isLoading={queryState === 'loading'}
         onGenerateReport={(filter) => handleGenerateReport(filter, false)}
+        onFiltersChange={handleFiltersChange}
         onReset={handleReset}
       />
+
+      {catalogError && (
+        <div className="report-catalog-warning" role="status">
+          <Shield size={16} />
+          <span>{catalogError}</span>
+        </div>
+      )}
 
       {/* State Transitions Container */}
       {queryState === 'idle' && <ReportInitialState />}
@@ -148,11 +163,12 @@ export const ReportsPage: React.FC = () => {
 
       {queryState === 'empty' && <ReportEmptyState onResetFilters={handleReset} />}
 
-      {queryState === 'error' && (
+      {(queryState === 'error' || queryState === 'unavailable') && (
         <ReportErrorState
           error={errorMessage || ''}
           onRetry={handleRetry}
           isRetrying={isRetrying}
+          isUnavailable={queryState === 'unavailable'}
         />
       )}
 

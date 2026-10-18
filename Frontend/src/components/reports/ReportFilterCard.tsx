@@ -9,13 +9,14 @@ import {
   AlertCircle,
   Loader2,
 } from 'lucide-react';
-import type { Vehicle, DeviceSummary, TrackingReportFilter } from '../../types/telemetry';
+import type { ReportVehicleOption, DeviceSummary, TrackingReportFilter } from '../../types/telemetry';
 
 interface ReportFilterCardProps {
-  vehicles: Vehicle[];
+  vehicles: ReportVehicleOption[];
   devices: DeviceSummary[];
   isLoading: boolean;
   onGenerateReport: (filter: TrackingReportFilter) => void;
+  onFiltersChange: () => void;
   onReset: () => void;
 }
 
@@ -36,6 +37,7 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
   devices,
   isLoading,
   onGenerateReport,
+  onFiltersChange,
   onReset,
 }) => {
   // Initialize with past 24 hours
@@ -57,32 +59,20 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
   const [activePreset, setActivePreset] = useState<PresetType>('24h');
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Combine device identifiers from vehicles and devices list
+  // Submit the backend device UUID while displaying its human-readable identifier.
   const availableDevices = useMemo(() => {
-    const map = new Map<string, { identifier: string; vehicleId?: string }>();
-    devices.forEach(d => {
-      if (d.identifier) {
-        map.set(d.identifier, { identifier: d.identifier, vehicleId: d.vehicleId });
-      }
-    });
-    vehicles.forEach(v => {
-      if (v.deviceId) {
-        const existing = map.get(v.deviceId);
-        map.set(v.deviceId, { identifier: v.deviceId, vehicleId: existing?.vehicleId || v.id });
-      }
-    });
-    return Array.from(map.values()).filter((device) => {
+    return devices.filter((device) => {
       return !selectedVehicleId || device.vehicleId === selectedVehicleId;
     });
-  }, [devices, selectedVehicleId, vehicles]);
+  }, [devices, selectedVehicleId]);
 
   // When vehicle changes, auto-select bonded device if applicable
   const handleVehicleChange = (vehicleId: string) => {
+    onFiltersChange();
     setSelectedVehicleId(vehicleId);
     if (vehicleId) {
-      const match = vehicles.find(v => v.id === vehicleId);
       const associatedDevice = devices.find((device) => device.vehicleId === vehicleId);
-      setSelectedDeviceId(associatedDevice?.identifier || match?.deviceId || '');
+      setSelectedDeviceId(associatedDevice?.id || '');
     } else {
       setSelectedDeviceId('');
     }
@@ -90,6 +80,7 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
 
   // Preset click handler
   const handlePresetSelect = (preset: PresetType) => {
+    onFiltersChange();
     setActivePreset(preset);
     const now = new Date();
     let fromDate: Date;
@@ -257,11 +248,14 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
                 id="report-device-select"
                 className="filter-select"
                 value={selectedDeviceId}
-                onChange={(e) => setSelectedDeviceId(e.target.value)}
+                onChange={(e) => {
+                  onFiltersChange();
+                  setSelectedDeviceId(e.target.value);
+                }}
               >
                 <option value="">All Bonded Units</option>
                 {availableDevices.map((d) => (
-                  <option key={d.identifier} value={d.identifier}>
+                  <option key={d.id} value={d.id}>
                     {d.identifier} {d.vehicleId ? `(Bound to ${d.vehicleId})` : ''}
                   </option>
                 ))}
@@ -285,6 +279,7 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
                 className="filter-input"
                 value={dateFrom}
                 onChange={(e) => {
+                  onFiltersChange();
                   setDateFrom(e.target.value);
                   setActivePreset('custom');
                 }}
@@ -307,6 +302,7 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
                 className="filter-input"
                 value={dateTo}
                 onChange={(e) => {
+                  onFiltersChange();
                   setDateTo(e.target.value);
                   setActivePreset('custom');
                 }}
@@ -331,7 +327,6 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
               type="button"
               className="btn-secondary"
               onClick={handleResetFilters}
-              disabled={isLoading}
               title="Clear filters and restore the Last 24 Hours default"
             >
               <RotateCcw size={14} />

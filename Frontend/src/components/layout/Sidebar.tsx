@@ -33,6 +33,8 @@ export const Sidebar: React.FC = () => {
         <NavLink
           to="/"
           end
+          aria-label="Dashboard"
+          title="Dashboard"
           className={({ isActive }) => `sidebar-nav-item ${isActive ? 'active' : ''}`}
         >
           <LayoutDashboard className="nav-icon" />
@@ -41,6 +43,8 @@ export const Sidebar: React.FC = () => {
 
         <NavLink
           to="/fleet"
+          aria-label="Fleet"
+          title="Fleet"
           className={({ isActive }) => `sidebar-nav-item ${isActive ? 'active' : ''}`}
         >
           <Truck className="nav-icon" />
@@ -49,6 +53,8 @@ export const Sidebar: React.FC = () => {
 
         <NavLink
           to="/live-tracking"
+          aria-label="Live Tracking"
+          title="Live Tracking"
           className={({ isActive }) => `sidebar-nav-item ${isActive ? 'active' : ''}`}
         >
           <Radio className="nav-icon" />
@@ -58,6 +64,8 @@ export const Sidebar: React.FC = () => {
 
         <NavLink
           to="/history"
+          aria-label="History"
+          title="History"
           className={({ isActive }) => `sidebar-nav-item ${isActive ? 'active' : ''}`}
         >
           <History className="nav-icon" />
@@ -66,6 +74,8 @@ export const Sidebar: React.FC = () => {
 
         <NavLink
           to="/reports"
+          aria-label="Reports"
+          title="Reports"
           className={({ isActive }) => `sidebar-nav-item ${isActive ? 'active' : ''}`}
         >
           <FileBarChart className="nav-icon" />
@@ -74,6 +84,8 @@ export const Sidebar: React.FC = () => {
 
         <NavLink
           to="/settings"
+          aria-label="Settings"
+          title="Settings"
           className={({ isActive }) => `sidebar-nav-item ${isActive ? 'active' : ''}`}
         >
           <Settings className="nav-icon" />
