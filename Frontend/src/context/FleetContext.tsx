@@ -18,7 +18,7 @@ interface FleetContextType {
   addVehicle: (vehicleData: Partial<Vehicle> & { plateNumber: string; make: string; model: string }) => Vehicle;
   selectedVehicleId: string | null;
   setSelectedVehicleId: (id: string | null) => void;
-  lastIngestionTime: Date;
+  lastIngestionTime: Date | null;
   emergencyBroadcasts: string[];
   triggerEmergencyBroadcast: (message: string) => void;
   removeAlert: (alertId: string) => void;
@@ -37,7 +37,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<OperationalStatus | 'ALL'>('ALL');
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
-  const [lastIngestionTime, setLastIngestionTime] = useState<Date>(new Date());
+  const [lastIngestionTime, setLastIngestionTime] = useState<Date | null>(null);
   const [emergencyBroadcasts, setEmergencyBroadcasts] = useState<string[]>([]);
 
   // Initial load from backend API
@@ -50,19 +50,27 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setError(null);
 
     try {
-      const [fetchedVehicles, fetchedAlerts, fetchedEvents] = await Promise.all([
+      const [vehiclesResult, alertsResult, eventsResult] = await Promise.allSettled([
         fetchVehicles(),
         fetchCriticalAlerts(),
         fetchTelemetryEvents(),
       ]);
 
-      // If backend returned vehicles, update; otherwise remains empty list
-      if (fetchedVehicles.length > 0) {
-        setVehicles(fetchedVehicles);
+      if (vehiclesResult.status === 'fulfilled') setVehicles(vehiclesResult.value);
+      if (alertsResult.status === 'fulfilled') setAlerts(alertsResult.value);
+      if (eventsResult.status === 'fulfilled') {
+        setEvents(eventsResult.value);
+        const latestIngestion = eventsResult.value
+          .map((event) => event.ingestedAt)
+          .filter((timestamp) => Number.isFinite(Date.parse(timestamp)))
+          .sort((a, b) => Date.parse(b) - Date.parse(a))[0];
+        setLastIngestionTime(latestIngestion ? new Date(latestIngestion) : null);
       }
-      setAlerts(fetchedAlerts);
-      setEvents(fetchedEvents);
-      setLastIngestionTime(new Date());
+
+      const failures = [vehiclesResult, alertsResult, eventsResult]
+        .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+        .map((result) => result.reason instanceof Error ? result.reason.message : 'A telemetry service could not be reached.');
+      setError(failures.length ? failures.join(' ') : null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to fetch telemetry feed');
     } finally {
@@ -89,42 +97,17 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       plateNumber: data.plateNumber.toUpperCase(),
       make: data.make,
       model: data.model,
-      year: data.year || new Date().getFullYear(),
+      year: data.year,
       driverName: data.driverName || 'Unassigned',
       driverPhone: data.driverPhone,
-      deviceId: data.deviceId || `DEV-${Math.floor(100000 + Math.random() * 900000)}`,
+      deviceId: data.deviceId,
       status: 'active',
-      operationalStatus: data.operationalStatus || 'MOVING',
-      telemetry: {
-        latitude: 12.9716 + (Math.random() - 0.5) * 0.05,
-        longitude: 77.5946 + (Math.random() - 0.5) * 0.05,
-        speed: data.operationalStatus === 'STOPPED' ? 0 : 45,
-        heading: 90,
-        ignition: data.operationalStatus !== 'OFFLINE',
-        batteryVoltage: 13.8,
-        fuelPercentage: 82,
-        odometerKm: 14250,
-        recordedAt: new Date().toISOString(),
-        ingestedAt: new Date().toISOString(),
-      },
+      operationalStatus: data.operationalStatus ?? 'UNKNOWN',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
     setVehicles(prev => [newVehicle, ...prev]);
-
-    // Also register an ingestion event
-    const eventItem: TelemetryEventItem = {
-      id: `EV-${Date.now()}`,
-      vehicleId: newId,
-      deviceId: newVehicle.deviceId,
-      eventType: 'device_bonded',
-      summary: `Bonded new GPS unit ${newVehicle.deviceId} to ${newVehicle.plateNumber}`,
-      recordedAt: new Date().toISOString(),
-      ingestedAt: new Date().toISOString(),
-    };
-    setEvents(prev => [eventItem, ...prev]);
-    setLastIngestionTime(new Date());
 
     return newVehicle;
   }, []);

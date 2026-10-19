@@ -12,17 +12,20 @@ import {
   Wifi,
 } from 'lucide-react';
 import { useFleet } from '../../context/FleetContext';
+import { hasValidCoordinates } from '../../types/telemetry';
 import { MapViewport } from '../dashboard/MapViewport';
+import { AddDeviceModal } from '../modals/AddDeviceModal';
 import { TrackingDetailsPanel, formatTelemetryTime, getHeadingCompass } from './TrackingDetailsPanel';
 
-const statusOptions = ['ALL', 'MOVING', 'STOPPED', 'OFFLINE'] as const;
+const statusOptions = ['ALL', 'MOVING', 'STOPPED', 'OFFLINE', 'MAINTENANCE', 'UNKNOWN'] as const;
 type StatusFilter = (typeof statusOptions)[number];
 
 export const LiveTrackingView: React.FC = () => {
-  const { vehicles, selectedVehicleId, setSelectedVehicleId, refreshTelemetry } = useFleet();
+  const { vehicles, selectedVehicleId, setSelectedVehicleId, refreshTelemetry, isLoading, error } = useFleet();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [isDetailsOpen, setIsDetailsOpen] = useState(true);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [centerTrigger, setCenterTrigger] = useState<number>(0);
 
   // Auto-refresh telemetry every 5 seconds — matches the "Auto-sync 5s" footer indicator.
@@ -114,7 +117,14 @@ export const LiveTrackingView: React.FC = () => {
                 ? vehicles.length
                 : vehicles.filter((vehicle) => vehicle.operationalStatus === option).length;
 
-            const label = option === 'ALL' ? 'All' : option === 'MOVING' ? 'Moving' : option === 'STOPPED' ? 'Stopped' : 'Offline';
+            const labels: Record<StatusFilter, string> = {
+              ALL: 'All',
+              MOVING: 'Moving',
+              STOPPED: 'Stopped',
+              OFFLINE: 'Offline',
+              MAINTENANCE: 'Maintenance',
+              UNKNOWN: 'Unknown',
+            };
 
             return (
               <button
@@ -123,7 +133,7 @@ export const LiveTrackingView: React.FC = () => {
                 className={`status-tab ${statusFilter === option ? 'active' : ''}`}
                 onClick={() => setStatusFilter(option)}
               >
-                <span>{label}</span>
+                <span>{labels[option]}</span>
                 <span className="tab-count">{count}</span>
               </button>
             );
@@ -131,25 +141,28 @@ export const LiveTrackingView: React.FC = () => {
         </div>
 
         <div className="matrix-list">
-          {filteredVehicles.length === 0 ? (
+          {isLoading ? (
+            <div className="matrix-empty-state" role="status">
+              <h3>Loading fleet snapshot</h3>
+            </div>
+          ) : error && vehicles.length === 0 ? (
+            <div className="matrix-empty-state" role="alert">
+              <h3>Fleet data unavailable</h3>
+              <p>{error}</p>
+            </div>
+          ) : filteredVehicles.length === 0 ? (
             <div className="matrix-empty-state">
               <MapPinned size={28} color="#94a3b8" />
-              <h3>No matching assets</h3>
-              <p>Awaiting live telemetry. Vehicle information will appear here when the stream is active.</p>
+              <h3>{vehicles.length ? 'No matching assets' : 'No vehicles available'}</h3>
+              <p>{vehicles.length ? 'Adjust the search or status filter to see other vehicles.' : 'No vehicles were returned by the fleet service.'}</p>
             </div>
           ) : (
             filteredVehicles.map((vehicle) => {
               const isSelected = selectedVehicle?.id === vehicle.id;
               const isOffline = vehicle.operationalStatus === 'OFFLINE';
-              const hasTelemetry = Boolean(
-                vehicle.telemetry &&
-                  typeof vehicle.telemetry.latitude === 'number' &&
-                  typeof vehicle.telemetry.longitude === 'number' &&
-                  Number.isFinite(vehicle.telemetry.latitude) &&
-                  Number.isFinite(vehicle.telemetry.longitude),
-              );
+              const hasTelemetry = hasValidCoordinates(vehicle.telemetry?.latitude, vehicle.telemetry?.longitude);
 
-              let operationalBadgeText = 'Offline';
+              let operationalBadgeText = vehicle.operationalStatus === 'UNKNOWN' ? 'Status unavailable' : 'Offline';
               if (vehicle.operationalStatus === 'MOVING') {
                 operationalBadgeText = `Moving ${Math.round(vehicle.telemetry?.speed ?? 0)} km/h`;
               } else if (vehicle.operationalStatus === 'STOPPED') {
@@ -164,13 +177,13 @@ export const LiveTrackingView: React.FC = () => {
                 : '—';
 
               const timeFormatted = formatTelemetryTime(vehicle.telemetry?.recordedAt || vehicle.telemetry?.ingestedAt);
-              const isSignalStale = isOffline || timeFormatted.isStale;
+              const isSignalStale = hasTelemetry && timeFormatted.isStale;
               const lastPing = vehicle.telemetry?.recordedAt || vehicle.telemetry?.ingestedAt
                 ? timeFormatted.relative
                 : 'No Handshake';
 
               const corridor = hasTelemetry
-                ? `Last GNSS: ${Math.abs(vehicle.telemetry!.latitude).toFixed(2)}° N, ${Math.abs(vehicle.telemetry!.longitude).toFixed(2)}° E`
+                ? `Location: ${vehicle.telemetry!.latitude.toFixed(2)}°, ${vehicle.telemetry!.longitude.toFixed(2)}°`
                 : 'Location Unavailable';
 
               const modelClass = [vehicle.make, vehicle.model].filter(Boolean).join(' ') || '—';
@@ -233,20 +246,20 @@ export const LiveTrackingView: React.FC = () => {
 
         <div className="matrix-footer">
           <div className="health-pill">
-            <span>Fleet Health: {vehicles.length ? '96%' : '--%'}</span>
+            <span>Valid Locations: {vehicles.filter((vehicle) => hasValidCoordinates(vehicle.telemetry?.latitude, vehicle.telemetry?.longitude)).length}</span>
           </div>
           <div className="health-pill subtle">
             <Wifi size={12} /> Snapshot refresh
           </div>
           <div className="health-pill subtle">
-            <ShieldCheck size={12} /> Nodes Online {vehicles.filter((v) => v.operationalStatus !== 'OFFLINE').length}
+            <ShieldCheck size={12} /> Status Reported {vehicles.filter((vehicle) => vehicle.operationalStatus !== 'UNKNOWN').length}
           </div>
         </div>
       </aside>
 
       <div className="tracking-map-panel">
         <MapViewport
-          onAddDeviceClick={() => undefined}
+          onAddDeviceClick={() => setIsAddModalOpen(true)}
           showFloatingTelemetryCard={!isDetailsOpen}
           centerTrigger={centerTrigger}
           onVehicleSelect={(id) => {
@@ -262,6 +275,8 @@ export const LiveTrackingView: React.FC = () => {
           onClose={() => setIsDetailsOpen(false)}
         />
       )}
+
+      <AddDeviceModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} />
     </div>
   );
 };

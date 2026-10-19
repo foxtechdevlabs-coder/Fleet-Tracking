@@ -19,6 +19,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
   // Format ingestion time e.g. "26 Sep 2026, 11:42 AM IST (Asia/Kolkata Node Ingestion)"
   const formattedIngestionTime = React.useMemo(() => {
+    if (!lastIngestionTime) return 'No telemetry ingestion reported';
     try {
       const datePart = new Intl.DateTimeFormat('en-GB', {
         timeZone: 'Asia/Kolkata',
@@ -36,7 +37,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
       return `${datePart}, ${timePart} IST (Asia/Kolkata Node Ingestion)`;
     } catch {
-      return '26 Sep 2026, 11:42 AM IST (Asia/Kolkata Node Ingestion)';
+      return 'Telemetry ingestion time unavailable';
     }
   }, [lastIngestionTime]);
 

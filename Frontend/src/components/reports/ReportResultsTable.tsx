@@ -61,76 +61,6 @@ export function formatVehicleColumn(r: TrackingReportRecord): string {
   return '—';
 }
 
-function haversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-function calculateTotalDistance(records: TrackingReportRecord[]): number {
-  if (records.length < 2) return 0;
-  let totalKm = 0;
-  let prev: [number, number] | null = null;
-  for (const r of records) {
-    if (
-      typeof r.latitude === 'number' && Number.isFinite(r.latitude) &&
-      typeof r.longitude === 'number' && Number.isFinite(r.longitude)
-    ) {
-      if (prev) {
-        const d = haversineDistanceKm(prev[0], prev[1], r.latitude, r.longitude);
-        if (d > 0.001 && d < 500) {
-          totalKm += d;
-        }
-      }
-      prev = [r.latitude, r.longitude];
-    }
-  }
-  return totalKm;
-}
-
-function calculateOperatingEngine(records: TrackingReportRecord[]): string {
-  if (records.length === 0) return '—';
-
-  const sorted = [...records]
-    .filter((r) => r.recordedAt)
-    .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
-
-  if (sorted.length < 2) return '—';
-
-  let operatingMs = 0;
-  let hasSignals = false;
-
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const curr = sorted[i];
-    const next = sorted[i + 1];
-    const dt = new Date(next.recordedAt).getTime() - new Date(curr.recordedAt).getTime();
-    if (dt > 0 && dt <= 3600000) {
-      if (curr.ignition === true || (typeof curr.speed === 'number' && curr.speed > 0)) {
-        operatingMs += dt;
-        hasSignals = true;
-      } else if (curr.ignition === false) {
-        hasSignals = true;
-      }
-    }
-  }
-
-  if (!hasSignals && operatingMs === 0) {
-    return '—';
-  }
-
-  const hours = Math.floor(operatingMs / 3600000);
-  const minutes = Math.floor((operatingMs % 3600000) / 60000);
-  return `${hours}h ${minutes}m`;
-}
-
 function getPageNumbers(current: number, total: number): (number | '...')[] {
   if (total <= 7) {
     return Array.from({ length: total }, (_, i) => i + 1);
@@ -191,21 +121,14 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
     return filteredRecords.slice(start, start + rowsPerPage);
   }, [filteredRecords, currentPage, rowsPerPage]);
 
-  // Derived 5 Summary Metrics
+  // Only calculate metrics directly supported by the returned records.
   const stats = useMemo(() => {
     const speeds = records
       .map((r) => r.speed)
       .filter((speed): speed is number => typeof speed === 'number' && Number.isFinite(speed));
 
     const maxSpeed = speeds.length > 0 ? Math.max(...speeds) : null;
-    const totalDistance = calculateTotalDistance(records);
-    const engineHours = calculateOperatingEngine(records);
-
-    return {
-      maxSpeed,
-      totalDistance,
-      engineHours,
-    };
+    return { maxSpeed };
   }, [records]);
 
   // Helper to generate compliant filenames
@@ -378,9 +301,7 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
           <div className="report-meta-info">
             <span className="report-meta-label">Total Distance</span>
             <span className="report-meta-value">
-              {records.length > 0 && stats.totalDistance > 0
-                ? `${stats.totalDistance.toFixed(1)} km`
-                : '—'}
+              —
             </span>
           </div>
         </div>
@@ -392,7 +313,7 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
           </div>
           <div className="report-meta-info">
             <span className="report-meta-label">Operating Engine</span>
-            <span className="report-meta-value">{stats.engineHours}</span>
+            <span className="report-meta-value">—</span>
           </div>
         </div>
 

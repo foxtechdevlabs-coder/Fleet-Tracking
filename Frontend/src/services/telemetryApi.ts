@@ -21,21 +21,32 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
-export async function fetchVehicles(): Promise<Vehicle[]> {
+async function fetchCollection<T>(path: string, label: string): Promise<T[]> {
+  let response: Response;
   try {
-    const res = await fetch(`${API_BASE_URL}/vehicles`, {
+    response = await fetch(`${API_BASE_URL}${path}`, {
       headers: { 'Accept': 'application/json' },
     });
-    if (!res.ok) {
-      // Backend not yet responding or route not mounted
-      return [];
-    }
-    const json = await res.json();
-    return Array.isArray(json) ? json : json.data || [];
   } catch {
-    // Return empty array when backend is offline
-    return [];
+    throw new Error(`${label} service could not be reached.`);
   }
+
+  if (!response.ok) {
+    throw new Error(`${label} request failed (HTTP ${response.status}).`);
+  }
+
+  const body: unknown = await response.json();
+  const data = Array.isArray(body)
+    ? body
+    : typeof body === 'object' && body !== null && 'data' in body && Array.isArray(body.data)
+      ? body.data
+      : null;
+  if (!data) throw new Error(`${label} returned an unsupported response format.`);
+  return data as T[];
+}
+
+export async function fetchVehicles(): Promise<Vehicle[]> {
+  return fetchCollection<Vehicle>('/vehicles', 'Vehicle list');
 }
 
 export async function fetchVehicleById(vehicleId: string): Promise<Vehicle | null> {
@@ -65,29 +76,11 @@ export async function fetchLatestTelemetry(vehicleId: string): Promise<Telemetry
 }
 
 export async function fetchCriticalAlerts(): Promise<AlertItem[]> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/alerts/critical`, {
-      headers: { 'Accept': 'application/json' },
-    });
-    if (!res.ok) return [];
-    const json = await res.json();
-    return Array.isArray(json) ? json : json.data || [];
-  } catch {
-    return [];
-  }
+  return fetchCollection<AlertItem>('/alerts/critical', 'Critical alerts');
 }
 
 export async function fetchTelemetryEvents(): Promise<TelemetryEventItem[]> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/telemetry/recent`, {
-      headers: { 'Accept': 'application/json' },
-    });
-    if (!res.ok) return [];
-    const json = await res.json();
-    return Array.isArray(json) ? json : json.data || [];
-  } catch {
-    return [];
-  }
+  return fetchCollection<TelemetryEventItem>('/telemetry/recent', 'Telemetry events');
 }
 
 export function computeFleetMetrics(vehicles: Vehicle[]): FleetSummaryMetrics {

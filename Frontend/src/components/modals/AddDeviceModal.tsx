@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { X, Plus, Radio, Cpu } from 'lucide-react';
-import type { OperationalStatus } from '../../types/telemetry';
 import { useFleet } from '../../context/FleetContext';
 
 interface AddDeviceModalProps {
@@ -18,8 +17,6 @@ export const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ isOpen, onClose 
   const [driverName, setDriverName] = useState('');
   const [driverPhone, setDriverPhone] = useState('');
   const [deviceId, setDeviceId] = useState('');
-  const [operationalStatus, setOperationalStatus] = useState<OperationalStatus>('MOVING');
-
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -33,8 +30,8 @@ export const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ isOpen, onClose 
       model,
       driverName: driverName.trim() || 'Unassigned',
       driverPhone: driverPhone.trim() || undefined,
-      deviceId: deviceId.trim() || `DEV-${Math.floor(100000 + Math.random() * 900000)}`,
-      operationalStatus,
+      deviceId: deviceId.trim() || undefined,
+      operationalStatus: 'UNKNOWN',
     });
 
     onClose();
@@ -52,7 +49,7 @@ export const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ isOpen, onClose 
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Cpu size={20} color="#0284c7" />
-            <span className="modal-title">Connect Device & Register Vehicle</span>
+            <span className="modal-title">Add Vehicle Details</span>
           </div>
           <button onClick={onClose} style={{ color: '#94a3b8' }}>
             <X size={20} />
@@ -73,7 +70,7 @@ export const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ isOpen, onClose 
               gap: '8px'
             }}>
               <Radio size={16} color="#16a34a" />
-              <span>Bonds an active GPS telemetry unit to an operational fleet chassis.</span>
+              <span>This adds vehicle details to the current view. Status and location appear only after telemetry is received.</span>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -162,17 +159,8 @@ export const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ isOpen, onClose 
               </div>
 
               <div className="form-group">
-                <label className="form-label">Initial Status</label>
-                <select
-                  className="form-input"
-                  value={operationalStatus}
-                  onChange={(e) => setOperationalStatus(e.target.value as OperationalStatus)}
-                >
-                  <option value="MOVING">MOVING</option>
-                  <option value="STOPPED">STOPPED</option>
-                  <option value="OFFLINE">OFFLINE</option>
-                  <option value="MAINTENANCE">MAINTENANCE</option>
-                </select>
+                <label className="form-label">Telemetry Status</label>
+                <input className="form-input" value="Awaiting telemetry" readOnly />
               </div>
             </div>
           </div>
@@ -183,7 +171,7 @@ export const AddDeviceModal: React.FC<AddDeviceModalProps> = ({ isOpen, onClose 
             </button>
             <button type="submit" className="btn-primary">
               <Plus size={16} />
-              <span>Bond & Activate Telemetry</span>
+              <span>Add Vehicle</span>
             </button>
           </div>
         </form>

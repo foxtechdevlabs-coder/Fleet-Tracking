@@ -1,10 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { LogOut, Clock, ChevronRight } from 'lucide-react';
+import { useFleet } from '../../context/FleetContext';
 
 export const TopNav: React.FC = () => {
   const location = useLocation();
+  const { error, isLoading, isRefreshing } = useFleet();
   const [currentTime, setCurrentTime] = useState<string>('');
+  const apiStatus = isLoading || isRefreshing
+    ? 'Checking snapshot APIs'
+    : error
+      ? 'Snapshot API unavailable'
+      : 'Snapshot APIs available';
 
   useEffect(() => {
     const updateTime = () => {
@@ -47,9 +54,9 @@ export const TopNav: React.FC = () => {
           <span className="active-crumb">{getSubBreadcrumb()}</span>
         </nav>
 
-        <div className="connection-pill" title="Telemetry feed is currently unavailable because the backend does not expose a realtime socket yet">
-          <span className="pulse-dot" style={{ background: '#94a3b8' }} />
-          <span>Telemetry Feed Offline</span>
+        <div className="connection-pill" title="Status of the configured snapshot API requests">
+          <span className="pulse-dot" style={{ background: error ? '#ef4444' : isLoading || isRefreshing ? '#f59e0b' : '#10b981' }} />
+          <span>{apiStatus}</span>
         </div>
       </div>
 
@@ -57,7 +64,7 @@ export const TopNav: React.FC = () => {
       <div className="top-nav-right">
         <div className="ist-clock" title="Primary ingestion cluster time">
           <Clock size={14} color="#0284c7" />
-          <span>{currentTime || '15:42:08 IST (Asia/Kolkata)'}</span>
+          <span>{currentTime || '--:--:-- IST (Asia/Kolkata)'}</span>
         </div>
 
         <div className="user-profile-widget">

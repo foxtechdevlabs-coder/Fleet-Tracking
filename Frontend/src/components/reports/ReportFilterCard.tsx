@@ -21,13 +21,21 @@ interface ReportFilterCardProps {
 }
 
 export function formatToDateTimeLocal(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
+}
+
+function dateTimeLocalToIso(dateTime: string): string {
+  return new Date(`${dateTime}:00+05:30`).toISOString();
 }
 
 type PresetType = 'today' | '24h' | '7d' | 'custom';
@@ -90,7 +98,7 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
         fromDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
         break;
       case 'today':
-        fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+        fromDate = new Date(`${formatToDateTimeLocal(now).slice(0, 10)}T00:00:00+05:30`);
         break;
       case '7d':
         fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -146,8 +154,8 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
     onGenerateReport({
       vehicleId: selectedVehicleId || undefined,
       deviceId: selectedDeviceId || undefined,
-      dateFrom: new Date(dateFrom).toISOString(),
-      dateTo: new Date(dateTo).toISOString(),
+      dateFrom: dateTimeLocalToIso(dateFrom),
+      dateTo: dateTimeLocalToIso(dateTo),
     });
   };
 

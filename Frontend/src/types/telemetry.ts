@@ -1,7 +1,12 @@
 // Enterprise Telematics & Fleet Tracking Types
 // Aligned with FleetTrack Phase 1 Architecture
 
-export type OperationalStatus = 'MOVING' | 'STOPPED' | 'OFFLINE' | 'MAINTENANCE';
+export type OperationalStatus = 'MOVING' | 'STOPPED' | 'OFFLINE' | 'MAINTENANCE' | 'UNKNOWN';
+
+export function hasValidCoordinates(latitude: unknown, longitude: unknown): boolean {
+  return typeof latitude === 'number' && Number.isFinite(latitude) && latitude >= -90 && latitude <= 90 &&
+    typeof longitude === 'number' && Number.isFinite(longitude) && longitude >= -180 && longitude <= 180;
+}
 
 export type VehicleStatus = 'active' | 'inactive' | 'maintenance';
 
@@ -32,7 +37,7 @@ export interface Vehicle {
   plateNumber: string; // Formatted plate (e.g. "TN 74 AB 1234")
   make: string;
   model: string;
-  year: number;
+  year?: number;
   driverName?: string;
   driverPhone?: string;
   driverLicense?: string;

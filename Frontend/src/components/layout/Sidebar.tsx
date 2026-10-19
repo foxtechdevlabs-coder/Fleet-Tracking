@@ -7,11 +7,18 @@ import {
   History,
   FileBarChart,
   Settings,
-  ShieldCheck,
-  Server
+  Server,
 } from 'lucide-react';
+import { useFleet } from '../../context/FleetContext';
 
 export const Sidebar: React.FC = () => {
+  const { error, isLoading, isRefreshing } = useFleet();
+  const apiStatus = isLoading || isRefreshing
+    ? 'Checking snapshot APIs'
+    : error
+      ? 'Snapshot API unavailable'
+      : 'Snapshot APIs available';
+
   return (
     <aside className="app-sidebar" aria-label="Operational Fleet Menu">
       {/* Brand Header */}
@@ -59,7 +66,7 @@ export const Sidebar: React.FC = () => {
         >
           <Radio className="nav-icon" />
           <span>Live Tracking</span>
-          <span className="sidebar-nav-badge">Live</span>
+          <span className="sidebar-nav-badge">Map</span>
         </NavLink>
 
         <NavLink
@@ -93,20 +100,12 @@ export const Sidebar: React.FC = () => {
         </NavLink>
       </nav>
 
-      {/* Security & System Info */}
-      <div style={{ padding: '0 12px 12px' }}>
-        <div className="sidebar-security-badge">
-          <ShieldCheck size={14} color="#0d9488" />
-          <span>Telematics Mesh Encrypted</span>
-        </div>
-      </div>
-
       {/* Sidebar Footer */}
       <div className="sidebar-footer">
         <div className="sidebar-status-card">
           <div className="status-node-info">
-            <div className="pulse-dot" />
-            <span>Nodes Online: <strong>248 / 250</strong></span>
+            <div className="pulse-dot" style={{ background: error ? '#ef4444' : isLoading || isRefreshing ? '#f59e0b' : '#10b981' }} />
+            <span>{apiStatus}</span>
           </div>
           <Server size={14} color="#64748b" />
         </div>

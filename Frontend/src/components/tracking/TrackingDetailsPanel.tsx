@@ -27,6 +27,7 @@ import {
   Zap,
 } from 'lucide-react';
 import type { OperationalStatus, Vehicle } from '../../types/telemetry';
+import { hasValidCoordinates } from '../../types/telemetry';
 import { useFleet } from '../../context/FleetContext';
 
 export interface TrackingDetailsPanelProps {
@@ -141,11 +142,11 @@ export function formatSpeed(speed?: number | null, isOffline?: boolean): {
  */
 export function formatTelemetryTime(dateStr?: string): { relative: string; absolute: string; isStale: boolean } {
   if (!dateStr) {
-    return { relative: 'No Handshake', absolute: '—', isStale: true };
+    return { relative: 'No Handshake', absolute: '—', isStale: false };
   }
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) {
-    return { relative: 'No Handshake', absolute: '—', isStale: true };
+    return { relative: 'No Handshake', absolute: '—', isStale: false };
   }
   const now = Date.now();
   const diffSec = Math.floor((now - date.getTime()) / 1000);
@@ -196,9 +197,12 @@ export function getStatusStyle(status?: OperationalStatus) {
       return { label: 'Stationary', badgeClass: 'stopped', dotClass: 'stopped' };
     case 'MAINTENANCE':
       return { label: 'Maintenance', badgeClass: 'maintenance', dotClass: 'maintenance' };
+    case 'UNKNOWN':
+      return { label: 'Status Unavailable', badgeClass: 'unknown', dotClass: 'unknown' };
     case 'OFFLINE':
-    default:
       return { label: 'Offline', badgeClass: 'offline', dotClass: 'offline' };
+    default:
+      return { label: 'Status Unavailable', badgeClass: 'unknown', dotClass: 'unknown' };
   }
 }
 
@@ -241,9 +245,12 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
   const isOffline = activeVehicle.operationalStatus === 'OFFLINE';
   const statusInfo = getStatusStyle(activeVehicle.operationalStatus);
   const speedInfo = formatSpeed(telemetry?.speed, isOffline);
+  const hasSpeed = typeof telemetry?.speed === 'number' && Number.isFinite(telemetry.speed);
   const headingInfo = getHeadingCompass(telemetry?.heading, isOffline);
-  const coordInfo = formatCoordinates(telemetry?.latitude, telemetry?.longitude);
-  const lastUpdated = formatTelemetryTime(telemetry?.recordedAt || telemetry?.ingestedAt || activeVehicle.updatedAt);
+  const coordInfo = hasValidCoordinates(telemetry?.latitude, telemetry?.longitude)
+    ? formatCoordinates(telemetry?.latitude, telemetry?.longitude)
+    : formatCoordinates(null, null);
+  const lastUpdated = formatTelemetryTime(telemetry?.recordedAt || telemetry?.ingestedAt);
   const hasTelemetry = coordInfo.hasCoordinates;
 
   const handleCopyCoords = () => {
@@ -264,7 +271,7 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
   // Model tag
   const modelTag = [activeVehicle.make, activeVehicle.model].filter(Boolean).join(' ') || '—';
   // Compliance status
-  const complianceStatus = activeVehicle.complianceStatus || 'Insurance & Fitness: Valid';
+  const complianceStatus = activeVehicle.complianceStatus || 'Not reported';
   // Carrier ID
   const carrierId = activeVehicle.carrierId || '—';
 
@@ -345,9 +352,9 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
           )}
           <span>
             {isOffline
-              ? 'Signal Stale — Device Offline'
+              ? 'Device Offline'
               : hasTelemetry
-              ? 'Live GNSS Fix Acquired'
+              ? (lastUpdated.isStale ? 'Stale Location' : 'Telemetry Snapshot Available')
               : 'Awaiting GPS Fix — Signal Pending'}
           </span>
         </div>
@@ -356,7 +363,7 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
             {isOffline
               ? (hasTelemetry ? `Last Fix: ${lastUpdated.relative}` : 'No Handshake')
               : hasTelemetry
-              ? (telemetry?.gnssFixType || '3D DGPS Fix')
+              ? (telemetry?.gnssFixType || (typeof telemetry?.satelliteCount === 'number' ? `GNSS: ${telemetry.satelliteCount} satellites` : 'GNSS details unavailable'))
               : 'Awaiting Signal'}
           </span>
         </div>
@@ -387,7 +394,7 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
                 />
               </div>
               <span className="metric-subtext">
-                {isOffline ? 'Offline / Signal Stale' : speedInfo.isMoving ? 'In Transit' : 'Stationary'}
+                {isOffline ? 'Device offline' : !hasSpeed ? 'Awaiting speed telemetry' : speedInfo.isMoving ? 'In transit' : 'Stationary'}
               </span>
             </div>
 
@@ -489,11 +496,11 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
               </div>
               <div className="metric-value-wrap">
                 <span className="metric-value">
-                  {isOffline ? 'Offline' : (telemetry?.signalGrade || (hasTelemetry ? '4G LTE' : '—'))}
+                  {isOffline ? 'Offline' : (telemetry?.signalGrade || '—')}
                 </span>
               </div>
               <span className="metric-subtext">
-                {isOffline ? 'Signal Stale (No Handshake)' : (telemetry?.csqDbm || (hasTelemetry ? 'CSQ 24 (-65 dBm)' : '—'))}
+                {isOffline ? 'No connection' : (telemetry?.csqDbm || '—')}
               </span>
             </div>
           </div>
