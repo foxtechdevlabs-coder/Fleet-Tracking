@@ -3,9 +3,30 @@
 
 export type OperationalStatus = 'MOVING' | 'STOPPED' | 'OFFLINE' | 'MAINTENANCE' | 'UNKNOWN';
 
+export function parseFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === 'null' || trimmed === 'undefined') {
+      return null;
+    }
+
+    const normalized = trimmed.replace(/,/g, '');
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
 export function hasValidCoordinates(latitude: unknown, longitude: unknown): boolean {
-  return typeof latitude === 'number' && Number.isFinite(latitude) && latitude >= -90 && latitude <= 90 &&
-    typeof longitude === 'number' && Number.isFinite(longitude) && longitude >= -180 && longitude <= 180;
+  const lat = parseFiniteNumber(latitude);
+  const lng = parseFiniteNumber(longitude);
+
+  return lat !== null && lng !== null && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
 }
 
 export type VehicleStatus = 'active' | 'inactive' | 'maintenance';

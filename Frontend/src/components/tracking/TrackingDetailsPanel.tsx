@@ -27,7 +27,7 @@ import {
   Zap,
 } from 'lucide-react';
 import type { OperationalStatus, Vehicle } from '../../types/telemetry';
-import { hasValidCoordinates } from '../../types/telemetry';
+import { hasValidCoordinates, parseFiniteNumber } from '../../types/telemetry';
 import { useFleet } from '../../context/FleetContext';
 
 export interface TrackingDetailsPanelProps {
@@ -40,22 +40,17 @@ export interface TrackingDetailsPanelProps {
 /**
  * Calculates compass cardinal direction from degrees (0 - 360) with both abbreviated and full cardinal names.
  */
-export function getHeadingCompass(heading?: number | null, isOffline?: boolean): {
+export function getHeadingCompass(heading?: number | null | string, isOffline?: boolean): {
   degrees: number | null;
   cardinal: string;
   fullName: string;
 } {
-  if (
-    isOffline ||
-    heading === undefined ||
-    heading === null ||
-    typeof heading !== 'number' ||
-    isNaN(heading) ||
-    !Number.isFinite(heading)
-  ) {
+  const numericHeading = parseFiniteNumber(heading);
+
+  if (isOffline || numericHeading === null) {
     return { degrees: null, cardinal: '—', fullName: '—' };
   }
-  const normalized = ((Math.round(heading) % 360) + 360) % 360;
+  const normalized = ((Math.round(numericHeading) % 360) + 360) % 360;
   const directions = [
     { code: 'N', name: 'North' },
     { code: 'NNE', name: 'North-North-East' },
@@ -85,15 +80,15 @@ export function getHeadingCompass(heading?: number | null, isOffline?: boolean):
 /**
  * Formats coordinates with hemisphere notation
  */
-export function formatCoordinates(lat?: number | null, lng?: number | null): {
+export function formatCoordinates(lat?: number | string | null, lng?: number | string | null): {
   latDisplay: string;
   lngDisplay: string;
   hasCoordinates: boolean;
 } {
-  const hasLat = typeof lat === 'number' && Number.isFinite(lat);
-  const hasLng = typeof lng === 'number' && Number.isFinite(lng);
+  const numericLat = parseFiniteNumber(lat);
+  const numericLng = parseFiniteNumber(lng);
 
-  if (!hasLat || !hasLng) {
+  if (numericLat === null || numericLng === null) {
     return {
       latDisplay: '—',
       lngDisplay: '—',
@@ -101,12 +96,12 @@ export function formatCoordinates(lat?: number | null, lng?: number | null): {
     };
   }
 
-  const latHemisphere = (lat as number) >= 0 ? 'N' : 'S';
-  const lngHemisphere = (lng as number) >= 0 ? 'E' : 'W';
+  const latHemisphere = numericLat >= 0 ? 'N' : 'S';
+  const lngHemisphere = numericLng >= 0 ? 'E' : 'W';
 
   return {
-    latDisplay: `${Math.abs(lat as number).toFixed(4)}° ${latHemisphere}`,
-    lngDisplay: `${Math.abs(lng as number).toFixed(4)}° ${lngHemisphere}`,
+    latDisplay: `${Math.abs(numericLat).toFixed(4)}° ${latHemisphere}`,
+    lngDisplay: `${Math.abs(numericLng).toFixed(4)}° ${lngHemisphere}`,
     hasCoordinates: true,
   };
 }
@@ -114,22 +109,18 @@ export function formatCoordinates(lat?: number | null, lng?: number | null): {
 /**
  * Formats speed in km/h
  */
-export function formatSpeed(speed?: number | null, isOffline?: boolean): {
+export function formatSpeed(speed?: number | string | null, isOffline?: boolean): {
   speedDisplay: string;
   isMoving: boolean;
   numericSpeed: number;
 } {
-  if (
-    isOffline ||
-    speed === undefined ||
-    speed === null ||
-    typeof speed !== 'number' ||
-    isNaN(speed) ||
-    !Number.isFinite(speed)
-  ) {
+  const numericSpeed = parseFiniteNumber(speed);
+
+  if (isOffline || numericSpeed === null) {
     return { speedDisplay: '—', isMoving: false, numericSpeed: 0 };
   }
-  const rounded = Math.max(0, Math.round(speed));
+
+  const rounded = Math.max(0, Math.round(numericSpeed));
   return {
     speedDisplay: `${rounded} km/h`,
     isMoving: rounded > 0,
@@ -242,20 +233,24 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
   }
 
   const telemetry = activeVehicle.telemetry;
+  const latitude = parseFiniteNumber(telemetry?.latitude);
+  const longitude = parseFiniteNumber(telemetry?.longitude);
+  const speed = parseFiniteNumber(telemetry?.speed);
+  const heading = parseFiniteNumber(telemetry?.heading);
   const isOffline = activeVehicle.operationalStatus === 'OFFLINE';
   const statusInfo = getStatusStyle(activeVehicle.operationalStatus);
-  const speedInfo = formatSpeed(telemetry?.speed, isOffline);
-  const hasSpeed = typeof telemetry?.speed === 'number' && Number.isFinite(telemetry.speed);
-  const headingInfo = getHeadingCompass(telemetry?.heading, isOffline);
-  const coordInfo = hasValidCoordinates(telemetry?.latitude, telemetry?.longitude)
-    ? formatCoordinates(telemetry?.latitude, telemetry?.longitude)
+  const speedInfo = formatSpeed(speed ?? undefined, isOffline);
+  const hasSpeed = speed !== null;
+  const headingInfo = getHeadingCompass(heading ?? undefined, isOffline);
+  const coordInfo = hasValidCoordinates(latitude, longitude)
+    ? formatCoordinates(latitude, longitude)
     : formatCoordinates(null, null);
   const lastUpdated = formatTelemetryTime(telemetry?.recordedAt || telemetry?.ingestedAt);
   const hasTelemetry = coordInfo.hasCoordinates;
 
   const handleCopyCoords = () => {
-    if (!hasTelemetry || telemetry?.latitude === undefined || telemetry?.longitude === undefined) return;
-    const text = `${telemetry.latitude.toFixed(6)}, ${telemetry.longitude.toFixed(6)}`;
+    if (!hasTelemetry || latitude === null || longitude === null) return;
+    const text = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
     navigator.clipboard?.writeText(text);
     setCopiedCoords(true);
     setTimeout(() => setCopiedCoords(false), 2000);
