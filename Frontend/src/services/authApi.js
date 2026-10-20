@@ -122,6 +122,31 @@ export async function signIn(email, password) {
   };
 }
 
+export async function getCurrentAdmin(session) {
+  const response = await request("/auth/me", {
+    method: "GET",
+    headers: { Authorization: `${session.tokenType} ${session.accessToken}` }
+  });
+
+  const admin = response?.data;
+  if (
+    typeof admin?.email !== "string" ||
+    !admin.email ||
+    typeof admin?.name !== "string" ||
+    !admin.name.trim() ||
+    typeof admin?.role !== "string" ||
+    !admin.role
+  ) {
+    throw new ApiError("The authentication service returned an invalid session. Please sign in again.");
+  }
+
+  return {
+    email: admin.email,
+    name: admin.name,
+    role: admin.role
+  };
+}
+
 export function revokeSession(session) {
   return request("/auth/logout", {
     method: "POST",

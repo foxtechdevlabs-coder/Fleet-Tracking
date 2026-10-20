@@ -34,9 +34,11 @@ expiry in `sessionStorage` until logout, tab close, or token expiry. The
 development server proxies `/api` to `http://localhost:3000`. For a deployed
 frontend, set
 `VITE_API_BASE_URL` to the API origin (for example, `https://api.example.com`).
+When restoring a tab session, the frontend verifies the stored bearer token
+with `GET /api/v1/auth/me` before rendering protected pages. Logout clears the
+local session immediately and then requests server-side token revocation.
 
-All application routes are protected. Logout clears the local session and
-requests server-side token revocation. Pages without a connected data endpoint
+All application routes are protected. Pages without a connected data endpoint
 show an empty state instead of sample fleet or telemetry records. The frontend
 does not provide a local or fake-auth fallback; login requires the documented
 API to be available.

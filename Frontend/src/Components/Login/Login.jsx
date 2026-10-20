@@ -18,7 +18,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { ErrorState, LoadingState } from "../Feedback/AsyncState";
 
 function Login() {
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated, login, clearAuthError } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const submittingRef = useRef(false);
@@ -26,6 +26,7 @@ function Login() {
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState({});
   const [apiError, setApiError] = useState("");
+  const [authNotice, setAuthNotice] = useState(location.state?.authError || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -77,6 +78,8 @@ function Login() {
 
   const handleEmailChange = (event) => {
     setEmail(event.target.value);
+    clearAuthError();
+    setAuthNotice("");
     setErrors((current) => {
       const next = { ...current };
       delete next.email;
@@ -87,6 +90,8 @@ function Login() {
 
   const handlePasswordChange = (event) => {
     setPassword(event.target.value);
+    clearAuthError();
+    setAuthNotice("");
     setErrors((current) => {
       const next = { ...current };
       delete next.password;
@@ -158,10 +163,10 @@ function Login() {
               </div>
             )}
 
-            {(apiError || location.state?.logoutError) && (
+            {(apiError || authNotice || location.state?.logoutError) && (
               <ErrorState
                 className="api-error-alert"
-                message={apiError || location.state.logoutError}
+                message={apiError || authNotice || location.state?.logoutError}
               />
             )}
 

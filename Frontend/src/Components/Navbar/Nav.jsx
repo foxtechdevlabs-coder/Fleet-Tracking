@@ -47,17 +47,18 @@ function Nav() {
     if (isLoggingOut) return;
     setIsLoggingOut(true);
     let logoutState = { logoutNotice: "You have been signed out." };
+    const logoutRequest = logout();
+    navigate("/login", { replace: true, state: logoutState });
 
     try {
-      await logout();
+      await logoutRequest;
     } catch {
       logoutState = {
         logoutNotice: "You have been signed out on this device.",
         logoutError: "The server could not confirm sign-out. Your local session has been cleared."
       };
+      navigate("/login", { replace: true, state: logoutState });
     }
-
-    navigate("/login", { replace: true, state: logoutState });
   };
 
   return (
