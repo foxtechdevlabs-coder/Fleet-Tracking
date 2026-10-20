@@ -140,8 +140,8 @@ export interface TrackingReportRecord {
   vehicleMake?: string;
   vehicleModel?: string;
   deviceId?: string;
-  latitude: number;
-  longitude: number;
+  latitude?: number | null;
+  longitude?: number | null;
   speed?: number | null; // km/h
   heading?: number | null; // degrees (0-360)
   altitude?: number | null; // meters

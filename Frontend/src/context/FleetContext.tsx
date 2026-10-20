@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Vehicle, AlertItem, TelemetryEventItem, FleetSummaryMetrics, OperationalStatus } from '../types/telemetry';
 import { fetchVehicles, fetchCriticalAlerts, fetchTelemetryEvents, computeFleetMetrics } from '../services/telemetryApi';
 
@@ -28,6 +28,7 @@ const FleetContext = createContext<FleetContextType | undefined>(undefined);
 
 export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // CRITICAL CONSTRAINT: Start with empty state — no dummy mock array hardcoded
+  const requestInFlightRef = useRef(false);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [events, setEvents] = useState<TelemetryEventItem[]>([]);
@@ -42,6 +43,9 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Initial load from backend API
   const loadFleetData = useCallback(async (isRefresh = false) => {
+    if (requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
+
     if (isRefresh) {
       setIsRefreshing(true);
     } else {
@@ -74,6 +78,7 @@ export const FleetProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to fetch telemetry feed');
     } finally {
+      requestInFlightRef.current = false;
       setIsLoading(false);
       setIsRefreshing(false);
     }

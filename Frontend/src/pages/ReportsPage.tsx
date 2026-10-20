@@ -136,7 +136,7 @@ export const ReportsPage: React.FC = () => {
         </div>
         <div className="report-capabilities" aria-label="Report export availability">
           <span className="report-capability available"><Shield size={13} /> Excel &amp; CSV available</span>
-          <span className="report-capability unavailable"><Shield size={13} /> PDF unavailable</span>
+          <span className="report-capability available"><Shield size={13} /> PDF available</span>
         </div>
       </div>
 
@@ -177,6 +177,14 @@ export const ReportsPage: React.FC = () => {
             title="Generate a report to enable export"
           >
             <span>Export CSV (.csv)</span>
+          </button>
+          <button
+            type="button"
+            className="export-btn"
+            disabled
+            title="Generate a report to enable export"
+          >
+            <span>Export PDF (.pdf)</span>
           </button>
           <button
             type="button"

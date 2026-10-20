@@ -207,7 +207,7 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
             className={`preset-chip ${activePreset === '7d' ? 'active' : ''}`}
             onClick={() => handlePresetSelect('7d')}
           >
-            Last 7 Days (Active)
+            Last 7 Days
           </button>
           <button
             type="button"
@@ -264,7 +264,7 @@ export const ReportFilterCard: React.FC<ReportFilterCardProps> = ({
                 <option value="">All Bonded Units</option>
                 {availableDevices.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.identifier} (Hardwired Teltonika{d.vehicleId ? ` - ${d.vehicleId}` : ''})
+                    {d.identifier}{d.vehicleId ? ` - ${d.vehicleId}` : ''}
                   </option>
                 ))}
                 {availableDevices.length === 0 && <option value="" disabled>No devices available</option>}

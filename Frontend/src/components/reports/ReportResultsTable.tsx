@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Clock,
   Compass,
@@ -20,6 +20,33 @@ export interface ReportResultsTableProps {
 }
 
 const REPORT_TIME_ZONE_DISPLAY = 'Asia/Kolkata (UTC +05:30)';
+
+function getLatitude(record: TrackingReportRecord): number | null {
+  const latitude = typeof record.latitude === 'number' && Number.isFinite(record.latitude)
+    ? record.latitude
+    : null;
+  return latitude !== null && latitude >= -90 && latitude <= 90 ? latitude : null;
+}
+
+function getLongitude(record: TrackingReportRecord): number | null {
+  const longitude = typeof record.longitude === 'number' && Number.isFinite(record.longitude)
+    ? record.longitude
+    : null;
+  return longitude !== null && longitude >= -180 && longitude <= 180 ? longitude : null;
+}
+
+function getSpeed(record: TrackingReportRecord): number | null {
+  return typeof record.speed === 'number' && Number.isFinite(record.speed) && record.speed >= 0
+    ? record.speed
+    : null;
+}
+
+function getHeading(record: TrackingReportRecord): number | null {
+  return typeof record.heading === 'number' && Number.isFinite(record.heading) &&
+    record.heading >= 0 && record.heading <= 360
+    ? record.heading
+    : null;
+}
 
 function getHeadingDirection(deg: number): string {
   const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
@@ -87,6 +114,20 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
   const [rowsPerPage, setRowsPerPage] = useState(15);
   const [isExporting, setIsExporting] = useState(false);
   const [exportFeedback, setExportFeedback] = useState<string | null>(null);
+  const exportFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (exportFeedbackTimerRef.current) clearTimeout(exportFeedbackTimerRef.current);
+  }, []);
+
+  const showExportFeedback = (message: string, duration: number) => {
+    if (exportFeedbackTimerRef.current) clearTimeout(exportFeedbackTimerRef.current);
+    setExportFeedback(message);
+    exportFeedbackTimerRef.current = setTimeout(() => {
+      setExportFeedback(null);
+      exportFeedbackTimerRef.current = null;
+    }, duration);
+  };
 
   // Filter records based on table search input
   const filteredRecords = useMemo(() => {
@@ -123,11 +164,10 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
 
   // Only calculate metrics directly supported by the returned records.
   const stats = useMemo(() => {
-    const speeds = records
-      .map((r) => r.speed)
-      .filter((speed): speed is number => typeof speed === 'number' && Number.isFinite(speed));
-
-    const maxSpeed = speeds.length > 0 ? Math.max(...speeds) : null;
+    const maxSpeed = records.reduce<number | null>((currentMax, record) => {
+      const speed = getSpeed(record);
+      return speed !== null && (currentMax === null || speed > currentMax) ? speed : currentMax;
+    }, null);
     return { maxSpeed };
   }, [records]);
 
@@ -143,6 +183,16 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
     return `telemetry-report-${vId}-${fromStr}_to_${toStr}`;
   };
 
+  const getExportValues = (record: TrackingReportRecord) => ({
+    timestamp: formatReportTimestampIST(record.recordedAt),
+    vehicle: formatVehicleColumn(record),
+    device: record.deviceId || '',
+    latitude: getLatitude(record),
+    longitude: getLongitude(record),
+    speed: getSpeed(record),
+    heading: getHeading(record),
+  });
+
   // Export to Excel (.xlsx) using exact 7 columns
   const handleExportExcel = async () => {
     if (records.length === 0 || isExporting) return;
@@ -153,42 +203,146 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
       await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
       const XLSX = await import('xlsx');
       const rows = records.map((record) => {
-        const dateTime = formatReportTimestampIST(record.recordedAt);
-        const vehicle = formatVehicleColumn(record);
-        const device = record.deviceId || '—';
-        const lat = typeof record.latitude === 'number' && Number.isFinite(record.latitude)
-          ? `${Math.abs(record.latitude).toFixed(5)}° ${record.latitude >= 0 ? 'N' : 'S'}`
-          : '—';
-        const lng = typeof record.longitude === 'number' && Number.isFinite(record.longitude)
-          ? `${Math.abs(record.longitude).toFixed(5)}° ${record.longitude >= 0 ? 'E' : 'W'}`
-          : '—';
-        const speed = typeof record.speed === 'number' && Number.isFinite(record.speed)
-          ? (record.speed > 80 ? `${record.speed.toFixed(1)} km/h (Overspeed)` : `${record.speed.toFixed(1)} km/h`)
-          : '—';
-        const heading = typeof record.heading === 'number' && Number.isFinite(record.heading)
-          ? `${Math.round(record.heading)}° ${getHeadingDirection(record.heading)}`
-          : '—';
-
+        const value = getExportValues(record);
         return {
-          'DATE / TIME (IST)': dateTime,
-          'VEHICLE': vehicle,
-          'DEVICE': device,
-          'LATITUDE': lat,
-          'LONGITUDE': lng,
-          'SPEED': speed,
-          'HEADING': heading,
+          'DATE / TIME (IST)': value.timestamp,
+          'VEHICLE': value.vehicle,
+          'DEVICE': value.device,
+          'LATITUDE': value.latitude,
+          'LONGITUDE': value.longitude,
+          'SPEED': value.speed,
+          'HEADING': value.heading,
         };
       });
 
       const workbook = XLSX.utils.book_new();
       const worksheet = XLSX.utils.json_to_sheet(rows);
+      worksheet['!cols'] = [
+        { wch: 28 },
+        { wch: 24 },
+        { wch: 20 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 12 },
+        { wch: 12 },
+      ];
+      for (let row = 2; row <= rows.length + 1; row += 1) {
+        for (const column of ['D', 'E']) {
+          const cell = worksheet[`${column}${row}`];
+          if (cell) cell.z = '0.00000';
+        }
+        for (const column of ['F', 'G']) {
+          const cell = worksheet[`${column}${row}`];
+          if (cell) cell.z = '0.0';
+        }
+      }
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Telemetry Records');
       XLSX.writeFile(workbook, `${getFilenameBase()}.xlsx`);
-      setExportFeedback('Excel report downloaded successfully.');
-      setTimeout(() => setExportFeedback(null), 4000);
+      showExportFeedback('Excel report downloaded successfully.', 4000);
     } catch {
-      setExportFeedback('The Excel report could not be created. Please try again.');
-      setTimeout(() => setExportFeedback(null), 6000);
+      showExportFeedback('The Excel report could not be created. Please try again.', 6000);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    if (records.length === 0 || isExporting) return;
+
+    setIsExporting(true);
+    setExportFeedback(null);
+    try {
+      const { jsPDF } = await import('jspdf');
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+      const margin = 32;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const columnWidths = [142, 130, 105, 92, 92, 86, 86];
+      const headers = ['DATE / TIME (IST)', 'VEHICLE', 'DEVICE', 'LATITUDE', 'LONGITUDE', 'SPEED', 'HEADING'];
+      let y = 0;
+
+      const drawPageHeader = (includeFilters: boolean) => {
+        y = margin;
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(15);
+        pdf.text('Telemetry Tracking Report', margin, y + 14);
+        y += 25;
+
+        if (includeFilters && filter) {
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(8);
+          const filterLines = [
+            `Vehicle: ${filter.vehicleId || 'All'}    Device: ${filter.deviceId || 'All'}`,
+            `Range (IST): ${formatReportTimestampIST(filter.dateFrom)} to ${formatReportTimestampIST(filter.dateTo)}`,
+          ];
+          filterLines.forEach((line) => {
+            pdf.text(line, margin, y + 8);
+            y += 12;
+          });
+        }
+
+        pdf.setFillColor(15, 23, 42);
+        pdf.rect(margin, y, columnWidths.reduce((sum, width) => sum + width, 0), 20, 'F');
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(7);
+        pdf.setTextColor(255, 255, 255);
+        let x = margin;
+        headers.forEach((header, index) => {
+          pdf.text(header, x + 4, y + 13);
+          x += columnWidths[index];
+        });
+        pdf.setTextColor(0, 0, 0);
+        y += 20;
+      };
+
+      drawPageHeader(true);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(7);
+
+      records.forEach((record) => {
+        const value = getExportValues(record);
+        const cells = [
+          value.timestamp,
+          value.vehicle,
+          value.device || '-',
+          value.latitude === null ? '-' : value.latitude.toFixed(5),
+          value.longitude === null ? '-' : value.longitude.toFixed(5),
+          value.speed === null ? '-' : `${value.speed.toFixed(1)} km/h`,
+          value.heading === null ? '-' : `${value.heading.toFixed(1)}°`,
+        ];
+        const lines = cells.map((cell, index) =>
+          pdf.splitTextToSize(cell, columnWidths[index] - 8) as string[],
+        );
+        const rowHeight = Math.max(16, ...lines.map((cellLines) => cellLines.length * 9 + 5));
+
+        if (y + rowHeight > pageHeight - margin) {
+          pdf.addPage();
+          drawPageHeader(false);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(7);
+        }
+
+        let x = margin;
+        lines.forEach((cellLines, index) => {
+          pdf.text(cellLines, x + 4, y + 10);
+          x += columnWidths[index];
+        });
+        pdf.setDrawColor(226, 232, 240);
+        pdf.line(margin, y + rowHeight, margin + columnWidths.reduce((sum, width) => sum + width, 0), y + rowHeight);
+        y += rowHeight;
+      });
+
+      const pageCount = pdf.getNumberOfPages();
+      for (let page = 1; page <= pageCount; page += 1) {
+        pdf.setPage(page);
+        pdf.setFontSize(8);
+        pdf.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 14, { align: 'right' });
+      }
+
+      pdf.save(`${getFilenameBase()}.pdf`);
+      showExportFeedback('PDF report downloaded successfully.', 4000);
+    } catch {
+      showExportFeedback('The PDF report could not be created. Please try again.', 6000);
     } finally {
       setIsExporting(false);
     }
@@ -220,30 +374,16 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
       const csvRows = [headers.map(escapeCsv).join(',')];
 
       for (const record of records) {
-        const dateTime = formatReportTimestampIST(record.recordedAt);
-        const vehicle = formatVehicleColumn(record);
-        const device = record.deviceId || '—';
-        const lat = typeof record.latitude === 'number' && Number.isFinite(record.latitude)
-          ? `${Math.abs(record.latitude).toFixed(5)}° ${record.latitude >= 0 ? 'N' : 'S'}`
-          : '—';
-        const lng = typeof record.longitude === 'number' && Number.isFinite(record.longitude)
-          ? `${Math.abs(record.longitude).toFixed(5)}° ${record.longitude >= 0 ? 'E' : 'W'}`
-          : '—';
-        const speed = typeof record.speed === 'number' && Number.isFinite(record.speed)
-          ? (record.speed > 80 ? `${record.speed.toFixed(1)} km/h (Overspeed)` : `${record.speed.toFixed(1)} km/h`)
-          : '—';
-        const heading = typeof record.heading === 'number' && Number.isFinite(record.heading)
-          ? `${Math.round(record.heading)}° ${getHeadingDirection(record.heading)}`
-          : '—';
+        const value = getExportValues(record);
 
         csvRows.push([
-          escapeCsv(dateTime),
-          escapeCsv(vehicle),
-          escapeCsv(device),
-          escapeCsv(lat),
-          escapeCsv(lng),
-          escapeCsv(speed),
-          escapeCsv(heading),
+          escapeCsv(value.timestamp),
+          escapeCsv(value.vehicle),
+          escapeCsv(value.device),
+          escapeCsv(value.latitude),
+          escapeCsv(value.longitude),
+          escapeCsv(value.speed),
+          escapeCsv(value.heading),
         ].join(','));
       }
 
@@ -258,12 +398,10 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      setExportFeedback('CSV report downloaded successfully.');
-      setTimeout(() => setExportFeedback(null), 4000);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showExportFeedback('CSV report downloaded successfully.', 4000);
     } catch {
-      setExportFeedback('The CSV report could not be created. Please try again.');
-      setTimeout(() => setExportFeedback(null), 6000);
+      showExportFeedback('The CSV report could not be created. Please try again.', 6000);
     } finally {
       setIsExporting(false);
     }
@@ -397,6 +535,17 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
               <span>Export CSV (.csv)</span>
             </button>
 
+            <button
+              type="button"
+              className="export-btn"
+              onClick={() => void handleExportPdf()}
+              disabled={isExportDisabled}
+              title={exportTooltip || 'Export returned records to PDF'}
+            >
+              {isExporting ? <RotateCw size={14} className="spin-anim" /> : <FileText size={14} />}
+              <span>Export PDF (.pdf)</span>
+            </button>
+
             {/* Export Excel Button */}
             <button
               type="button"
@@ -444,16 +593,20 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
                 paginatedRecords.map((r, idx) => {
                   const dateTimeFormatted = formatReportTimestampIST(r.recordedAt);
                   const vehicleFormatted = formatVehicleColumn(r);
-                  const isSpeedAvailable = typeof r.speed === 'number' && Number.isFinite(r.speed);
-                  const isOverSpeed = isSpeedAvailable && (r.speed as number) > 80;
-                  const isHeadingAvailable = typeof r.heading === 'number' && Number.isFinite(r.heading);
+                  const latitude = getLatitude(r);
+                  const longitude = getLongitude(r);
+                  const speed = getSpeed(r);
+                  const heading = getHeading(r);
+                  const isSpeedAvailable = speed !== null;
+                  const isOverSpeed = speed !== null && speed > 80;
+                  const isHeadingAvailable = heading !== null;
 
-                  const latFormatted = typeof r.latitude === 'number' && Number.isFinite(r.latitude)
-                    ? `${Math.abs(r.latitude).toFixed(5)}° ${r.latitude >= 0 ? 'N' : 'S'}`
+                  const latFormatted = latitude !== null
+                    ? `${Math.abs(latitude).toFixed(5)}° ${latitude >= 0 ? 'N' : 'S'}`
                     : '—';
 
-                  const lngFormatted = typeof r.longitude === 'number' && Number.isFinite(r.longitude)
-                    ? `${Math.abs(r.longitude).toFixed(5)}° ${r.longitude >= 0 ? 'E' : 'W'}`
+                  const lngFormatted = longitude !== null
+                    ? `${Math.abs(longitude).toFixed(5)}° ${longitude >= 0 ? 'E' : 'W'}`
                     : '—';
 
                   return (
@@ -510,12 +663,12 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
                         {isSpeedAvailable ? (
                           <span
                             className={`speed-badge ${
-                              isOverSpeed ? 'overspeed' : r.speed! > 0 ? 'moving' : 'stopped'
+                              isOverSpeed ? 'overspeed' : speed! > 0 ? 'moving' : 'stopped'
                             }`}
                           >
                             <Gauge size={11} />
                             <span>
-                              {r.speed!.toFixed(1)} km/h{isOverSpeed ? ' (Overspeed)' : ''}
+                              {speed!.toFixed(1)} km/h{isOverSpeed ? ' (Overspeed)' : ''}
                             </span>
                           </span>
                         ) : (
@@ -530,14 +683,14 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
                             <span
                               style={{
                                 display: 'inline-flex',
-                                transform: `rotate(${Math.round(r.heading!)}deg)`,
+                                transform: `rotate(${Math.round(heading!)}deg)`,
                                 transition: 'transform 0.2s',
                               }}
                             >
                               <Compass size={12} color="#0284c7" />
                             </span>
                             <span>
-                              {Math.round(r.heading!)}° {getHeadingDirection(r.heading!)}
+                              {Math.round(heading!)}° {getHeadingDirection(heading!)}
                             </span>
                           </span>
                         ) : (

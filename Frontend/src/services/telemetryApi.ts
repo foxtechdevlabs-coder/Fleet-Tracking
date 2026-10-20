@@ -12,6 +12,7 @@ import type {
   DeviceSummary,
   ReportVehicleOption,
 } from '../types/telemetry';
+import { parseFiniteNumber } from '../types/telemetry';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -177,6 +178,32 @@ export async function fetchDevices(): Promise<DeviceSummary[]> {
 
 export class ReportApiUnavailableError extends Error {}
 
+function normalizeTrackingReportRecords(records: unknown[]): TrackingReportRecord[] {
+  return records.map((record, index) => {
+    if (typeof record !== 'object' || record === null || Array.isArray(record)) {
+      throw new Error(`The report service returned an invalid record at position ${index + 1}.`);
+    }
+
+    const value = record as Record<string, unknown>;
+    return {
+      id: typeof value.id === 'string' ? value.id : undefined,
+      recordedAt: typeof value.recordedAt === 'string' ? value.recordedAt : '',
+      vehicleId: typeof value.vehicleId === 'string' ? value.vehicleId : undefined,
+      plateNumber: typeof value.plateNumber === 'string' ? value.plateNumber : undefined,
+      vehicleMake: typeof value.vehicleMake === 'string' ? value.vehicleMake : undefined,
+      vehicleModel: typeof value.vehicleModel === 'string' ? value.vehicleModel : undefined,
+      deviceId: typeof value.deviceId === 'string' ? value.deviceId : undefined,
+      latitude: parseFiniteNumber(value.latitude),
+      longitude: parseFiniteNumber(value.longitude),
+      speed: parseFiniteNumber(value.speed),
+      heading: parseFiniteNumber(value.heading),
+      altitude: parseFiniteNumber(value.altitude),
+      status: typeof value.status === 'string' ? value.status : undefined,
+      ignition: typeof value.ignition === 'boolean' ? value.ignition : undefined,
+    };
+  });
+}
+
 export async function fetchTrackingReport(
   filters: TrackingReportFilter,
   signal?: AbortSignal
@@ -214,7 +241,7 @@ export async function fetchTrackingReport(
     }
 
     const json: unknown = await res.json();
-    if (Array.isArray(json)) return json as TrackingReportRecord[];
+    if (Array.isArray(json)) return normalizeTrackingReportRecords(json);
 
     if (typeof json === 'object' && json !== null) {
       if ('success' in json && json.success === false) {
@@ -224,7 +251,7 @@ export async function fetchTrackingReport(
         throw new Error(message);
       }
       if ('data' in json && Array.isArray(json.data)) {
-        return json.data as TrackingReportRecord[];
+        return normalizeTrackingReportRecords(json.data);
       }
     }
 

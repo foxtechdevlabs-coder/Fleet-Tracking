@@ -225,6 +225,9 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       const speed = vehicle.telemetry?.speed ?? 0;
       const heading = vehicle.telemetry?.heading ?? 0;
       const isSelected = vehicle.id === selectedVehicleId;
+      const telemetryTimestamp = vehicle.telemetry?.recordedAt || vehicle.telemetry?.ingestedAt;
+      const locationTime = formatTelemetryTime(telemetryTimestamp);
+      const isLocationStale = locationTime.isStale;
 
       let callout = `${vehicle.id} • ${vehicle.operationalStatus === 'UNKNOWN' ? 'Status unavailable' : 'Offline'}`;
       if (vehicle.operationalStatus === 'MOVING') {
@@ -236,6 +239,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       } else if (vehicle.operationalStatus === 'MAINTENANCE') {
         callout = `${vehicle.id} • Maintenance`;
       }
+      if (isLocationStale) callout = `Stale location • ${callout}`;
 
       const icon = L.divIcon({
         className: `fleet-map-pin ${isSelected ? 'active-marker' : ''}`,
@@ -248,7 +252,10 @@ export const MapViewport: React.FC<MapViewportProps> = ({
         tooltipAnchor: [0, -16],
       });
 
-      const marker = L.marker([vehicle.telemetry!.latitude, vehicle.telemetry!.longitude], { icon });
+      const marker = L.marker([vehicle.telemetry!.latitude, vehicle.telemetry!.longitude], {
+        icon,
+        opacity: isLocationStale ? 0.55 : 1,
+      });
       marker.bindTooltip(callout, {
         permanent: false,
         direction: 'top',
@@ -280,6 +287,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
         L.marker([vehicle.telemetry!.latitude, vehicle.telemetry!.longitude], {
           icon: arrowIcon,
           interactive: false,
+          opacity: isLocationStale ? 0.55 : 1,
         }).addTo(layer);
       }
     });
@@ -300,13 +308,28 @@ export const MapViewport: React.FC<MapViewportProps> = ({
   };
 
   const hasLiveTelemetry = activeVehicleIds.length > 0;
-  const statusText = hasLiveTelemetry
-    ? 'Telemetry snapshot available'
-    : error
-      ? 'Snapshot API unavailable'
-      : isLoading
-        ? 'Loading telemetry snapshot'
-        : 'Awaiting valid GPS telemetry';
+  const hasFreshTelemetry = activeVehicleIds.some((vehicle) => {
+    const timestamp = vehicle.telemetry?.recordedAt || vehicle.telemetry?.ingestedAt;
+    const time = formatTelemetryTime(timestamp);
+    return Boolean(timestamp) && time.absolute !== '—' && !time.isStale;
+  });
+  const hasStaleTelemetry = activeVehicleIds.some((vehicle) =>
+    formatTelemetryTime(vehicle.telemetry?.recordedAt || vehicle.telemetry?.ingestedAt).isStale,
+  );
+  let statusText: string;
+  if (hasFreshTelemetry) {
+    statusText = 'Telemetry snapshot available';
+  } else if (hasStaleTelemetry) {
+    statusText = 'Stale locations displayed';
+  } else if (hasLiveTelemetry) {
+    statusText = 'Location timestamps unavailable';
+  } else if (error) {
+    statusText = 'Snapshot API unavailable';
+  } else if (isLoading) {
+    statusText = 'Loading telemetry snapshot';
+  } else {
+    statusText = 'Awaiting valid GPS telemetry';
+  }
   const latency = '--';
   const sync = error ? 'Snapshot API error' : isLoading ? 'Loading snapshot' : 'Backend snapshot';
 
