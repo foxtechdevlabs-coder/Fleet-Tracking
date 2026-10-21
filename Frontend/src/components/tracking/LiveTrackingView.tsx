@@ -12,7 +12,7 @@ import {
   Wifi,
 } from 'lucide-react';
 import { useFleet } from '../../context/FleetContext';
-import { hasValidCoordinates } from '../../types/telemetry';
+import { hasValidCoordinates, parseFiniteNumber } from '../../types/telemetry';
 import { MapViewport } from '../dashboard/MapViewport';
 import { AddDeviceModal } from '../modals/AddDeviceModal';
 import { TrackingDetailsPanel, formatTelemetryTime, getHeadingCompass } from './TrackingDetailsPanel';
@@ -175,6 +175,8 @@ export const LiveTrackingView: React.FC = () => {
               const headingDisplay = headingInfo.cardinal !== '—'
                 ? `${headingInfo.degrees}° ${headingInfo.cardinal}`
                 : '—';
+              const latitude = parseFiniteNumber(vehicle.telemetry?.latitude);
+              const longitude = parseFiniteNumber(vehicle.telemetry?.longitude);
 
               const timeFormatted = formatTelemetryTime(vehicle.telemetry?.recordedAt || vehicle.telemetry?.ingestedAt);
               const isSignalStale = hasTelemetry && timeFormatted.isStale;
@@ -182,8 +184,8 @@ export const LiveTrackingView: React.FC = () => {
                 ? timeFormatted.relative
                 : 'No Handshake';
 
-              const corridor = hasTelemetry
-                ? `Location: ${vehicle.telemetry!.latitude.toFixed(2)}°, ${vehicle.telemetry!.longitude.toFixed(2)}°`
+              const corridor = hasTelemetry && latitude !== null && longitude !== null
+                ? `Location: ${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°`
                 : 'Location Unavailable';
 
               const modelClass = [vehicle.make, vehicle.model].filter(Boolean).join(' ') || '—';

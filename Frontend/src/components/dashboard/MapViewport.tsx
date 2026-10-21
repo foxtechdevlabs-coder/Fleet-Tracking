@@ -10,7 +10,7 @@ import {
   Plus,
   Radio,
 } from 'lucide-react';
-import { hasValidCoordinates, type MapViewMode, type OperationalStatus } from '../../types/telemetry';
+import { hasValidCoordinates, parseFiniteNumber, type MapViewMode, type OperationalStatus, type Vehicle } from '../../types/telemetry';
 import { useFleet } from '../../context/FleetContext';
 import { getHeadingCompass, formatTelemetryTime } from '../tracking/TrackingDetailsPanel';
 
@@ -21,7 +21,16 @@ export interface MapViewportProps {
   onVehicleSelect?: (vehicleId: string) => void;
 }
 
-const DEFAULT_CENTER: [number, number] = [12.9716, 77.5946];
+const WORLD_OVERVIEW_CENTER: [number, number] = [0, 0];
+const WORLD_OVERVIEW_ZOOM = 2;
+
+function getVehicleCoordinates(vehicle: Vehicle): [number, number] | null {
+  const latitude = parseFiniteNumber(vehicle.telemetry?.latitude);
+  const longitude = parseFiniteNumber(vehicle.telemetry?.longitude);
+  return latitude !== null && longitude !== null && hasValidCoordinates(latitude, longitude)
+    ? [latitude, longitude]
+    : null;
+}
 
 const getStatusColor = (status?: OperationalStatus) => {
   switch (status) {
@@ -59,8 +68,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
   const activeVehicleIds = useMemo(
     () =>
       vehicles.filter(
-        (vehicle) =>
-          hasValidCoordinates(vehicle.telemetry?.latitude, vehicle.telemetry?.longitude),
+        (vehicle) => getVehicleCoordinates(vehicle) !== null,
       ),
     [vehicles],
   );
@@ -77,7 +85,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       zoomControl: false,
       attributionControl: false,
       preferCanvas: true,
-    }).setView(DEFAULT_CENTER, 11);
+    }).setView(WORLD_OVERVIEW_CENTER, WORLD_OVERVIEW_ZOOM);
 
     const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -134,11 +142,9 @@ export const MapViewport: React.FC<MapViewportProps> = ({
     if (!map) return;
     const targetId = targetVehicleId || selectedVehicleId;
     const target = vehicles.find((v) => v.id === targetId);
-    const telemetry = target?.telemetry;
-    if (
-      target && hasValidCoordinates(target.telemetry?.latitude, target.telemetry?.longitude)
-    ) {
-      map.flyTo([telemetry!.latitude, telemetry!.longitude], 15, {
+    const coordinates = target ? getVehicleCoordinates(target) : null;
+    if (target && coordinates) {
+      map.flyTo(coordinates, 15, {
         animate: true,
         duration: 1.2,
       });
@@ -148,21 +154,21 @@ export const MapViewport: React.FC<MapViewportProps> = ({
 
   const handleRecenter = useCallback(() => {
     const selected = vehicles.find((vehicle) => vehicle.id === selectedVehicleId);
-    if (selected && hasValidCoordinates(selected.telemetry?.latitude, selected.telemetry?.longitude)) {
+    if (selected && getVehicleCoordinates(selected)) {
       flyToVehicle(selected.id);
       return;
     }
     const map = leafletMapRef.current;
     if (!map) return;
     if (activeVehicleIds.length) {
-      const bounds = L.latLngBounds(activeVehicleIds.map((vehicle) => [
-        vehicle.telemetry!.latitude,
-        vehicle.telemetry!.longitude,
-      ] as [number, number]));
+      const bounds = L.latLngBounds(activeVehicleIds.flatMap((vehicle) => {
+        const coordinates = getVehicleCoordinates(vehicle);
+        return coordinates ? [coordinates] : [];
+      }));
       map.fitBounds(bounds.pad(0.35), { maxZoom: 15, animate: true });
       return;
     }
-    map.setView(DEFAULT_CENTER, 11);
+    map.setView(WORLD_OVERVIEW_CENTER, WORLD_OVERVIEW_ZOOM);
   }, [activeVehicleIds, flyToVehicle, selectedVehicleId, vehicles]);
 
   const cycleMapMode = () => {
@@ -197,23 +203,20 @@ export const MapViewport: React.FC<MapViewportProps> = ({
 
     layer.clearLayers();
 
-    const validVehicles = vehicles.filter(
-      (vehicle) =>
-        hasValidCoordinates(vehicle.telemetry?.latitude, vehicle.telemetry?.longitude),
-    );
+    const validVehicles = vehicles.filter((vehicle) => getVehicleCoordinates(vehicle) !== null);
 
     if (validVehicles.length === 0) {
-      map.setView(DEFAULT_CENTER, 11);
-      setZoomLevel(11);
+      map.setView(WORLD_OVERVIEW_CENTER, WORLD_OVERVIEW_ZOOM);
+      setZoomLevel(WORLD_OVERVIEW_ZOOM);
       return;
     }
 
     // Only fitBounds on initial data arrival
     if (!hasInitialFitBoundsRef.current) {
-      const points = validVehicles.map((vehicle) => [
-        vehicle.telemetry!.latitude,
-        vehicle.telemetry!.longitude,
-      ] as [number, number]);
+      const points = validVehicles.flatMap((vehicle) => {
+        const coordinates = getVehicleCoordinates(vehicle);
+        return coordinates ? [coordinates] : [];
+      });
 
       const bounds = L.latLngBounds(points);
       map.fitBounds(bounds.pad(0.35), { maxZoom: 15, animate: true });
@@ -222,8 +225,11 @@ export const MapViewport: React.FC<MapViewportProps> = ({
     }
 
     validVehicles.forEach((vehicle) => {
-      const speed = vehicle.telemetry?.speed ?? 0;
-      const heading = vehicle.telemetry?.heading ?? 0;
+      const coordinates = getVehicleCoordinates(vehicle);
+      if (!coordinates) return;
+
+      const speed = parseFiniteNumber(vehicle.telemetry?.speed) ?? 0;
+      const heading = parseFiniteNumber(vehicle.telemetry?.heading) ?? 0;
       const isSelected = vehicle.id === selectedVehicleId;
       const telemetryTimestamp = vehicle.telemetry?.recordedAt || vehicle.telemetry?.ingestedAt;
       const locationTime = formatTelemetryTime(telemetryTimestamp);
@@ -252,7 +258,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
         tooltipAnchor: [0, -16],
       });
 
-      const marker = L.marker([vehicle.telemetry!.latitude, vehicle.telemetry!.longitude], {
+      const marker = L.marker(coordinates, {
         icon,
         opacity: isLocationStale ? 0.55 : 1,
       });
@@ -267,7 +273,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
       marker.on('click', () => {
         setSelectedVehicleId(vehicle.id);
         onVehicleSelect?.(vehicle.id);
-        map.flyTo([vehicle.telemetry!.latitude, vehicle.telemetry!.longitude], 15, {
+        map.flyTo(coordinates, 15, {
           animate: true,
           duration: 1.0,
         });
@@ -284,7 +290,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
           iconAnchor: [9, 9],
         });
 
-        L.marker([vehicle.telemetry!.latitude, vehicle.telemetry!.longitude], {
+        L.marker(coordinates, {
           icon: arrowIcon,
           interactive: false,
           opacity: isLocationStale ? 0.55 : 1,
@@ -336,9 +342,9 @@ export const MapViewport: React.FC<MapViewportProps> = ({
   const displayedVehicle = selectedVehicle ?? vehicles[0] ?? null;
   const speedForDisplay = typeof displayedVehicle?.telemetry?.speed === 'number' && Number.isFinite(displayedVehicle.telemetry.speed) ? displayedVehicle.telemetry.speed : null;
   const headingForDisplay = typeof displayedVehicle?.telemetry?.heading === 'number' && Number.isFinite(displayedVehicle.telemetry.heading) ? displayedVehicle.telemetry.heading : null;
-  const hasDisplayedLocation = hasValidCoordinates(displayedVehicle?.telemetry?.latitude, displayedVehicle?.telemetry?.longitude);
-  const latForDisplay = hasDisplayedLocation ? displayedVehicle?.telemetry?.latitude ?? null : null;
-  const lngForDisplay = hasDisplayedLocation ? displayedVehicle?.telemetry?.longitude ?? null : null;
+  const displayedCoordinates = displayedVehicle ? getVehicleCoordinates(displayedVehicle) : null;
+  const latForDisplay = displayedCoordinates?.[0] ?? null;
+  const lngForDisplay = displayedCoordinates?.[1] ?? null;
   const odometerForDisplay = displayedVehicle?.telemetry?.odometerKm ?? null;
 
   return (
@@ -428,7 +434,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
             </div>
             <h2 className="map-empty-title">{error ? 'Telemetry Snapshot Unavailable' : isLoading ? 'Loading Fleet Snapshot' : 'Awaiting GPS Telemetry'}</h2>
             <p className="map-empty-desc">
-              {error ? 'The fleet API could not be reached. No vehicle locations are being shown.' : 'No valid vehicle coordinates are available. The map will center on the neutral corridor until a location is received.'}
+              {error ? 'The fleet API could not be reached. No vehicle locations are being shown.' : 'No valid vehicle coordinates are available. The map is showing a world overview until a location is received.'}
             </p>
             {onAddDeviceClick && (
               <button type="button" className="btn-primary" onClick={onAddDeviceClick}>

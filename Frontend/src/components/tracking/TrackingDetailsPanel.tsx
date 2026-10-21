@@ -349,7 +349,11 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
             {isOffline
               ? 'Device Offline'
               : hasTelemetry
-              ? (lastUpdated.isStale ? 'Stale Location' : 'Telemetry Snapshot Available')
+              ? (lastUpdated.absolute === '—'
+                ? 'Location Timestamp Unavailable'
+                : lastUpdated.isStale
+                  ? 'Stale Location'
+                  : 'Telemetry Snapshot Available')
               : 'Awaiting GPS Fix — Signal Pending'}
           </span>
         </div>

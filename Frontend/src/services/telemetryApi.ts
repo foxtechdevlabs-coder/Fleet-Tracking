@@ -47,7 +47,51 @@ async function fetchCollection<T>(path: string, label: string): Promise<T[]> {
 }
 
 export async function fetchVehicles(): Promise<Vehicle[]> {
-  return fetchCollection<Vehicle>('/vehicles', 'Vehicle list');
+  const vehicles = await fetchCollection<unknown>('/vehicles', 'Vehicle list');
+  return vehicles.map((vehicle, index) => {
+    if (typeof vehicle !== 'object' || vehicle === null || Array.isArray(vehicle)) {
+      throw new Error(`Vehicle list returned an invalid record at position ${index + 1}.`);
+    }
+
+    const value = vehicle as Record<string, unknown>;
+    const status = value.status;
+    if (
+      typeof value.id !== 'string' ||
+      typeof value.plateNumber !== 'string' ||
+      typeof value.make !== 'string' ||
+      typeof value.model !== 'string' ||
+      (status !== 'active' && status !== 'inactive' && status !== 'maintenance')
+    ) {
+      throw new Error(`Vehicle list returned an unsupported record at position ${index + 1}.`);
+    }
+
+    const operationalStatuses = ['MOVING', 'STOPPED', 'OFFLINE', 'MAINTENANCE', 'UNKNOWN'] as const;
+    const operationalStatus = operationalStatuses.find((status) => status === value.operationalStatus) ?? 'UNKNOWN';
+    const optionalString = (field: string): string | undefined => (
+      typeof value[field] === 'string' ? value[field] : undefined
+    );
+
+    return {
+      id: value.id,
+      plateNumber: value.plateNumber,
+      make: value.make,
+      model: value.model,
+      year: typeof value.year === 'number' && Number.isFinite(value.year) ? value.year : undefined,
+      driverName: optionalString('driverName'),
+      driverPhone: optionalString('driverPhone'),
+      driverLicense: optionalString('driverLicense'),
+      carrierId: optionalString('carrierId'),
+      complianceStatus: optionalString('complianceStatus'),
+      hardwareModel: optionalString('hardwareModel'),
+      imei: optionalString('imei'),
+      firmwareVersion: optionalString('firmwareVersion'),
+      deviceId: optionalString('deviceId'),
+      status,
+      operationalStatus,
+      createdAt: optionalString('createdAt'),
+      updatedAt: optionalString('updatedAt'),
+    };
+  });
 }
 
 export async function fetchVehicleById(vehicleId: string): Promise<Vehicle | null> {

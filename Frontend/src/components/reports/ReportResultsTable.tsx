@@ -195,14 +195,14 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
 
   // Export to Excel (.xlsx) using exact 7 columns
   const handleExportExcel = async () => {
-    if (records.length === 0 || isExporting) return;
+    if (filteredRecords.length === 0 || isExporting) return;
 
     setIsExporting(true);
     setExportFeedback(null);
     try {
       await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
       const XLSX = await import('xlsx');
-      const rows = records.map((record) => {
+      const rows = filteredRecords.map((record) => {
         const value = getExportValues(record);
         return {
           'DATE / TIME (IST)': value.timestamp,
@@ -247,7 +247,7 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
   };
 
   const handleExportPdf = async () => {
-    if (records.length === 0 || isExporting) return;
+    if (filteredRecords.length === 0 || isExporting) return;
 
     setIsExporting(true);
     setExportFeedback(null);
@@ -299,7 +299,7 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(7);
 
-      records.forEach((record) => {
+      filteredRecords.forEach((record) => {
         const value = getExportValues(record);
         const cells = [
           value.timestamp,
@@ -350,7 +350,7 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
 
   // Export to CSV (.csv) using exact 7 columns according to RFC 4180
   const handleExportCsv = () => {
-    if (records.length === 0 || isExporting) return;
+    if (filteredRecords.length === 0 || isExporting) return;
 
     setIsExporting(true);
     setExportFeedback(null);
@@ -373,7 +373,7 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
 
       const csvRows = [headers.map(escapeCsv).join(',')];
 
-      for (const record of records) {
+      for (const record of filteredRecords) {
         const value = getExportValues(record);
 
         csvRows.push([
@@ -407,8 +407,10 @@ export const ReportResultsTable: React.FC<ReportResultsTableProps> = ({ records,
     }
   };
 
-  const isExportDisabled = records.length === 0 || isExporting;
-  const exportTooltip = records.length === 0 ? 'Generate a report to enable export' : undefined;
+  const isExportDisabled = filteredRecords.length === 0 || isExporting;
+  const exportTooltip = filteredRecords.length === 0
+    ? (searchTerm.trim() ? 'No matching records to export' : 'Generate a report to enable export')
+    : undefined;
 
   const startRecord = filteredRecords.length === 0 ? 0 : (currentPage - 1) * rowsPerPage + 1;
   const endRecord = Math.min(currentPage * rowsPerPage, filteredRecords.length);
