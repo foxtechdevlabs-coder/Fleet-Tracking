@@ -8,19 +8,13 @@ type DeviceVehicleRecord = {
   deviceRecordId: string;
   vehicleRecordId: string;
   deviceId: string;
-  deviceType: string;
-  imeiSerial: string;
-  simMsisdn: string;
-  manufacturer: string;
-  hardwareModel: string;
   deviceStatus: string;
   vehicleId: string;
   registrationNumber: string;
-  vehicleType: string;
   vehicleYear: string;
-  vehicleLabel: string;
-  driverName: string;
-  driverContact: string;
+  vehicleMake: string;
+  vehicleModel: string;
+  vehicleStatus: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -28,16 +22,27 @@ type DeviceVehicleRecord = {
 type ApiEntity = Record<string, unknown>;
 
 const asEntityArray = (value: unknown): ApiEntity[] => {
-  if (Array.isArray(value)) return value as ApiEntity[];
-  if (value && typeof value === "object" && "data" in value) {
-    const data = (value as { data?: unknown }).data;
-    if (Array.isArray(data)) return data as ApiEntity[];
+  const data =
+    Array.isArray(value)
+      ? value
+      : value && typeof value === "object" && "data" in value
+        ? (value as { data?: unknown }).data
+        : undefined;
+  if (
+    !Array.isArray(data) ||
+    !data.every(
+      (item) => typeof item === "object" && item !== null && !Array.isArray(item),
+    )
+  ) {
+    throw new Error("The API returned an invalid records response.");
   }
-  return [];
+  return data as ApiEntity[];
 };
 
 const asEntityObject = (value: unknown): ApiEntity => {
-  if (!value || typeof value !== "object") return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("The API returned an invalid record response.");
+  }
   const entity = value as ApiEntity;
   return entity.data && typeof entity.data === "object" && !Array.isArray(entity.data)
     ? entity.data as ApiEntity
@@ -65,17 +70,42 @@ const formatDate = (value: string): string => {
       }).format(date)} IST`;
 };
 
-const errorForStatus = (status: number, operation: "create" | "update"): string => {
+const errorForStatus = async (
+  response: Response,
+  operation: "create" | "update" | "load",
+): Promise<string> => {
+  let message: string | undefined;
+  try {
+    const payload: unknown = await response.json();
+    if (
+      payload &&
+      typeof payload === "object" &&
+      "message" in payload &&
+      typeof payload.message === "string"
+    ) {
+      message = payload.message;
+    }
+  } catch {
+    // Fall back to a status-specific message when the server returned no JSON.
+  }
+  if (
+    message &&
+    message !== "Internal server error" &&
+    !(response.status === 401 && message === "Unauthorized") &&
+    !(response.status === 403 && message === "Forbidden")
+  ) {
+    return message;
+  }
+
   const messages: Record<number, string> = {
-    400: "Validation Error (400): Invalid payload format or unsupported fields.",
-    401: operation === "create" ? "Unauthorized (401): Admin credentials required to add assets." : "Unauthorized (401): Admin credentials required to update assets.",
-    403: operation === "create" ? "Forbidden (403): You do not have permissions for asset creation." : "Forbidden (403): You do not have permissions for asset updates.",
-    404: operation === "create" ? "Not Found (404): Creation endpoint not found." : "Not Found (404): Record not found.",
-    405: operation === "create" ? "Method Not Allowed (405): POST action rejected." : "Method Not Allowed (405): Update action rejected.",
-    409: "Conflict (409): Device ID or Registration Number already exists.",
-    500: operation === "create" ? "Server Error (500): Could not create asset setup." : "Server Error (500): Could not update asset setup.",
+    400: "The server rejected the submitted fields. Check the values and try again.",
+    401: "Authentication required. Sign in as an administrator and try again.",
+    403: operation === "create" ? "You do not have permission to create records." : "You do not have permission to access these records.",
+    404: operation === "create" ? "The asset setup endpoint was not found." : operation === "load" ? "The requested record was not found." : "The record was not found.",
+    409: "A device identifier or vehicle registration number is already in use.",
+    500: operation === "create" ? "The server could not create the device and vehicle." : operation === "load" ? "The server could not load fleet records." : "The server could not update the records.",
   };
-  return messages[status] ?? `Request failed (${status}).`;
+  return messages[response.status] ?? `Request failed (${response.status}).`;
 };
 
 const highlightMatch = (value: string, query: string): ReactNode => {
@@ -86,70 +116,95 @@ const highlightMatch = (value: string, query: string): ReactNode => {
   return <>{value.slice(0, start)}<mark>{value.slice(start, start + normalizedQuery.length)}</mark>{value.slice(start + normalizedQuery.length)}</>;
 };
 
-const mapRecords = (devices: ApiEntity[], vehicles: ApiEntity[], linkSinglePair = false): DeviceVehicleRecord[] => {
+const mapRecords = (devices: ApiEntity[], vehicles: ApiEntity[]): DeviceVehicleRecord[] => {
   const vehicleById = new Map(vehicles.map((vehicle) => [textValue(vehicle.id), vehicle]));
   return devices.map((device) => {
-    const linkedVehicle = vehicleById.get(textValue(device.vehicleId)) ??
-      (linkSinglePair && devices.length === 1 && vehicles.length === 1 ? vehicles[0] : {});
+    const linkedVehicle = vehicleById.get(textValue(device.vehicleId)) ?? {};
     return {
-      id: textValue(device.id) || textValue(device.identifier),
+      id: textValue(device.id),
       deviceRecordId: textValue(device.id),
       vehicleRecordId: textValue(linkedVehicle.id),
       deviceId: textValue(device.identifier),
-      deviceType: textValue(device.type ?? device.deviceType),
-      imeiSerial: textValue(device.imei ?? device.serialNumber ?? device.identifier),
-      simMsisdn: textValue(device.simMsisdn),
-      manufacturer: textValue(device.manufacturer),
-      hardwareModel: textValue(device.hardwareModel),
-      deviceStatus: textValue(device.status) || "unknown",
-      vehicleId: textValue(linkedVehicle.vehicleId),
+      deviceStatus: textValue(device.status),
+      vehicleId: textValue(device.vehicleId),
       registrationNumber: textValue(linkedVehicle.plateNumber),
-      vehicleType: textValue(linkedVehicle.vehicleType),
       vehicleYear: textValue(linkedVehicle.year),
-      vehicleLabel: textValue(linkedVehicle.model),
-      driverName: textValue(linkedVehicle.driverName),
-      driverContact: textValue(linkedVehicle.driverContact),
-      createdAt: textValue(linkedVehicle.createdAt),
-      updatedAt: textValue(linkedVehicle.updatedAt),
+      vehicleMake: textValue(linkedVehicle.make),
+      vehicleModel: textValue(linkedVehicle.model),
+      vehicleStatus: textValue(linkedVehicle.status),
+      createdAt: textValue(device.createdAt),
+      updatedAt: textValue(linkedVehicle.updatedAt) || textValue(device.updatedAt),
     };
   });
 };
 
 type CreationForm = {
   deviceId: string;
-  deviceType: string;
-  imeiSerial: string;
-  simMsisdn: string;
-  manufacturer: string;
-  hardwareModel: string;
   deviceStatus: string;
-  vehicleId: string;
   registrationNumber: string;
-  vehicleType: string;
   vehicleYear: string;
-  vehicleLabel: string;
-  driverName: string;
-  driverContact: string;
+  vehicleMake: string;
+  vehicleModel: string;
+  vehicleStatus: string;
 };
 
 type FormErrors = Partial<Record<keyof CreationForm, string>>;
 
 const initialForm: CreationForm = {
   deviceId: "",
-  deviceType: "Hardwired GPS",
-  imeiSerial: "",
-  simMsisdn: "",
-  manufacturer: "",
-  hardwareModel: "",
-  deviceStatus: "Active",
-  vehicleId: "",
+  deviceStatus: "active",
   registrationNumber: "",
-  vehicleType: "Heavy Truck",
-  vehicleYear: String(new Date().getFullYear()),
-  vehicleLabel: "",
-  driverName: "",
-  driverContact: "",
+  vehicleYear: "",
+  vehicleMake: "",
+  vehicleModel: "",
+  vehicleStatus: "active",
 };
+
+const pageSize = 100;
+
+async function fetchAllPages(
+  path: "/api/v1/devices" | "/api/v1/vehicles",
+  headers: HeadersInit,
+  signal: AbortSignal,
+): Promise<ApiEntity[]> {
+  const firstResponse = await fetch(`${path}?page=1&limit=${pageSize}`, {
+    headers,
+    signal,
+  });
+  if (!firstResponse.ok) {
+    throw new Error(await errorForStatus(firstResponse, "load"));
+  }
+  const firstPayload: unknown = await firstResponse.json();
+  const firstPage = asEntityArray(firstPayload);
+  if (
+    !firstPayload ||
+    typeof firstPayload !== "object" ||
+    !("meta" in firstPayload) ||
+    !firstPayload.meta ||
+    typeof firstPayload.meta !== "object" ||
+    !("total" in firstPayload.meta) ||
+    typeof firstPayload.meta.total !== "number" ||
+    !Number.isInteger(firstPayload.meta.total) ||
+    firstPayload.meta.total < 0
+  ) {
+    throw new Error("The API returned invalid pagination metadata.");
+  }
+
+  const total = firstPayload.meta.total;
+  const pages = Math.ceil(total / pageSize);
+  const allRecords = [...firstPage];
+  for (let page = 2; page <= pages; page += 1) {
+    const response = await fetch(`${path}?page=${page}&limit=${pageSize}`, {
+      headers,
+      signal,
+    });
+    if (!response.ok) {
+      throw new Error(await errorForStatus(response, "load"));
+    }
+    allRecords.push(...asEntityArray(await response.json()));
+  }
+  return allRecords;
+}
 
 function App() {
   const [activeTab, setActiveTab] = useState<"fleet" | "dashboard" | "live" | "history" | "reports" | "settings">("fleet");
@@ -173,9 +228,6 @@ function App() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const submissionInProgress = useRef(false);
-  const vehicleIdManuallyEdited = useRef(false);
-  const hasFetchedRecords = useRef(false);
-  const lastRecordsRetry = useRef(retryRecords);
 
   // Live dynamic clock in Asia/Kolkata timezone (IST)
   const [currentTime, setCurrentTime] = useState(() => {
@@ -206,10 +258,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (lastRecordsRetry.current !== retryRecords) {
-      hasFetchedRecords.current = false;
-      lastRecordsRetry.current = retryRecords;
-    }
     const controller = new AbortController();
     const token = localStorage.getItem("fleet_auth_token");
     if (!token) {
@@ -223,39 +271,31 @@ function App() {
     setIsLoadingRecords(true);
     setRecordsError(null);
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" };
-    const requestTimer = window.setTimeout(() => {
-      if (hasFetchedRecords.current) return;
-      hasFetchedRecords.current = true;
-      Promise.all([
-        fetch("/api/v1/devices", { headers, signal: controller.signal }),
-        fetch("/api/v1/vehicles", { headers, signal: controller.signal }),
-      ])
-        .then(async ([deviceResponse, vehicleResponse]) => {
-          if (!deviceResponse.ok || !vehicleResponse.ok) {
-            if (deviceResponse.status === 401 || vehicleResponse.status === 401) setAuthRequired(true);
-            throw new Error("Could not load records. Check your connection and retry.");
-          }
-          const [devicePayload, vehiclePayload] = await Promise.all([
-            deviceResponse.json(),
-            vehicleResponse.json(),
-          ]);
-          if (controller.signal.aborted) return;
-          setRecords(mapRecords(asEntityArray(devicePayload), asEntityArray(vehiclePayload)));
-        })
-        .catch((error: unknown) => {
-          if (controller.signal.aborted) return;
-          setRecordsError(error instanceof TypeError ? "Could not load records. Check your connection and retry." : error instanceof Error ? error.message : "Could not load records. Check your connection and retry.");
-          setRecords([]);
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setIsLoadingRecords(false);
-        });
-    }, 0);
+    Promise.all([
+      fetchAllPages("/api/v1/devices", headers, controller.signal),
+      fetchAllPages("/api/v1/vehicles", headers, controller.signal),
+    ])
+      .then(([devices, vehicles]) => {
+        if (controller.signal.aborted) return;
+        setRecords(mapRecords(devices, vehicles));
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        if (error instanceof Error && error.message.startsWith("Authentication required")) {
+          setAuthRequired(true);
+        }
+        setRecordsError(error instanceof TypeError
+          ? "Could not load records. Check your connection and retry."
+          : error instanceof Error
+            ? error.message
+            : "Could not load records. Check your connection and retry.");
+        setRecords([]);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingRecords(false);
+      });
 
-    return () => {
-      window.clearTimeout(requestTimer);
-      controller.abort();
-    };
+    return () => controller.abort();
   }, [retryRecords]);
 
   useEffect(() => {
@@ -275,6 +315,7 @@ function App() {
     const token = localStorage.getItem("fleet_auth_token");
     if (!token) {
       setDetailError("Authentication required");
+      setIsLoadingDetails(false);
       return () => controller.abort();
     }
 
@@ -288,28 +329,21 @@ function App() {
         : Promise.resolve(null),
     ])
       .then(async ([deviceResponse, vehicleResponse]) => {
-        if (!deviceResponse.ok || (vehicleResponse && !vehicleResponse.ok)) {
-          throw new Error("Could not load record details.");
+        if (!deviceResponse.ok) {
+          throw new Error(await errorForStatus(deviceResponse, "load"));
+        }
+        if (vehicleResponse && !vehicleResponse.ok) {
+          throw new Error(await errorForStatus(vehicleResponse, "load"));
         }
         const device = asEntityObject(await deviceResponse.json());
         const vehicle = vehicleResponse ? asEntityObject(await vehicleResponse.json()) : {};
         if (controller.signal.aborted) return;
-        const [details] = mapRecords([device], vehicleResponse ? [vehicle] : [], true);
-        setSelectedRecord((current) => current ? {
-          ...current,
-          ...details,
-          deviceType: details.deviceType || current.deviceType,
-          imeiSerial: details.imeiSerial || current.imeiSerial,
-          simMsisdn: details.simMsisdn || current.simMsisdn,
-          manufacturer: details.manufacturer || current.manufacturer,
-          hardwareModel: details.hardwareModel || current.hardwareModel,
-          vehicleId: details.vehicleId || current.vehicleId,
-          registrationNumber: details.registrationNumber || current.registrationNumber,
-          vehicleType: details.vehicleType || current.vehicleType,
-          vehicleLabel: details.vehicleLabel || current.vehicleLabel,
-          driverName: details.driverName || current.driverName,
-          driverContact: details.driverContact || current.driverContact,
-        } : current);
+        const [details] = mapRecords([device], vehicleResponse ? [vehicle] : []);
+        setSelectedRecord((current) =>
+          current?.deviceRecordId === selectedRecord.deviceRecordId
+            ? details
+            : current,
+        );
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
@@ -329,31 +363,11 @@ function App() {
     return (
       rec.deviceId.toLowerCase().includes(q) ||
       rec.registrationNumber.toLowerCase().includes(q) ||
-      rec.vehicleId.toLowerCase().includes(q)
+      rec.vehicleId.toLowerCase().includes(q) ||
+      rec.vehicleMake.toLowerCase().includes(q) ||
+      rec.vehicleModel.toLowerCase().includes(q)
     );
   });
-
-  // Auto-generate Vehicle ID when Device ID changes if Vehicle ID hasn't been manually edited
-  const handleDeviceIdChange = (value: string) => {
-    const trimmed = value.trim();
-    let autoVehicleId = "";
-    
-    if (trimmed.toUpperCase().startsWith("GPS-")) {
-      autoVehicleId = "VH-" + trimmed.slice(4);
-    } else if (trimmed) {
-      autoVehicleId = "VH-" + trimmed;
-    }
-
-    setFormData((prev) => ({
-      ...prev,
-      deviceId: value,
-      vehicleId: vehicleIdManuallyEdited.current ? prev.vehicleId : autoVehicleId,
-    }));
-
-    if (errors.deviceId) {
-      setErrors((prev) => ({ ...prev, deviceId: undefined, vehicleId: undefined }));
-    }
-  };
 
   const handleInputChange = (field: keyof CreationForm, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -364,64 +378,47 @@ function App() {
   };
 
   const isPayloadValid =
-    Boolean(formData.deviceId.trim()) &&
-    Boolean(formData.deviceType) &&
-    /^\d{15}$/.test(formData.imeiSerial.trim().replace(/[-\s]/g, "")) &&
-    /^\+91\s?[6-9]\d{4}\s?\d{5}$/.test(formData.simMsisdn.trim()) &&
-    Boolean(formData.manufacturer.trim()) &&
-    Boolean(formData.hardwareModel.trim()) &&
-    Boolean(formData.deviceStatus) &&
-    Boolean(formData.vehicleId.trim()) &&
-    Boolean(formData.registrationNumber.trim()) &&
-    Boolean(formData.vehicleType) &&
-    Number.isInteger(Number(formData.vehicleYear)) && Number(formData.vehicleYear) >= 1900 && Number(formData.vehicleYear) <= 2100 &&
-    (!formData.driverContact.trim() || /^\+91\s?[6-9]\d{4}\s?\d{5}$/.test(formData.driverContact.trim()));
+    formData.deviceId.trim().length >= 1 &&
+    formData.deviceId.trim().length <= 100 &&
+    formData.registrationNumber.trim().length >= 1 &&
+    formData.registrationNumber.trim().length <= 20 &&
+    formData.vehicleMake.trim().length >= 1 &&
+    formData.vehicleMake.trim().length <= 100 &&
+    formData.vehicleModel.trim().length >= 1 &&
+    formData.vehicleModel.trim().length <= 100 &&
+    Number.isInteger(Number(formData.vehicleYear)) &&
+    Number(formData.vehicleYear) >= 1900 &&
+    Number(formData.vehicleYear) <= 2100;
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
 
-    // Device Master Validation (Tasks 6-10)
     if (!formData.deviceId.trim()) {
-      newErrors.deviceId = "Device ID is required (e.g., GPS-049)";
-    }
-    if (!formData.deviceType) {
-      newErrors.deviceType = "Device Type is required";
-    }
-    if (!formData.imeiSerial.trim()) {
-      newErrors.imeiSerial = "IMEI / Serial Number is required";
-    } else if (!/^\d{15}$/.test(formData.imeiSerial.trim().replace(/[-\s]/g, ""))) {
-      newErrors.imeiSerial = "IMEI must be exactly 15 digits";
-    }
-    if (!formData.simMsisdn.trim()) {
-      newErrors.simMsisdn = "SIM / Phone Number is required";
-    } else if (!/^\+91\s?[6-9]\d{4}\s?\d{5}$/.test(formData.simMsisdn.trim())) {
-      newErrors.simMsisdn = "Enter a valid SIM MSISDN (+91 format)";
-    }
-    if (!formData.manufacturer.trim()) {
-      newErrors.manufacturer = "Manufacturer is required";
-    }
-    if (!formData.hardwareModel.trim()) {
-      newErrors.hardwareModel = "Hardware Model is required";
-    }
-    if (!formData.deviceStatus) {
-      newErrors.deviceStatus = "Device Status is required";
-    }
-
-    // Vehicle Details Validation (Tasks 11-15)
-    if (!formData.vehicleId.trim()) {
-      newErrors.vehicleId = "Vehicle ID is required (e.g., VH-049)";
+      newErrors.deviceId = "Device identifier is required.";
+    } else if (formData.deviceId.trim().length > 100) {
+      newErrors.deviceId = "Device identifier must be 100 characters or fewer.";
     }
     if (!formData.registrationNumber.trim()) {
-      newErrors.registrationNumber = "Registration Number is required";
+      newErrors.registrationNumber = "Registration number is required.";
+    } else if (formData.registrationNumber.trim().length > 20) {
+      newErrors.registrationNumber = "Registration number must be 20 characters or fewer.";
     }
-    if (!formData.vehicleType) {
-      newErrors.vehicleType = "Vehicle Type is required";
+    if (!formData.vehicleMake.trim()) {
+      newErrors.vehicleMake = "Vehicle make is required.";
+    } else if (formData.vehicleMake.trim().length > 100) {
+      newErrors.vehicleMake = "Vehicle make must be 100 characters or fewer.";
     }
-    if (!Number.isInteger(Number(formData.vehicleYear)) || Number(formData.vehicleYear) < 1900 || Number(formData.vehicleYear) > 2100) {
-      newErrors.vehicleYear = "Vehicle year must be between 1900 and 2100";
+    if (!formData.vehicleModel.trim()) {
+      newErrors.vehicleModel = "Vehicle model is required.";
+    } else if (formData.vehicleModel.trim().length > 100) {
+      newErrors.vehicleModel = "Vehicle model must be 100 characters or fewer.";
     }
-    if (formData.driverContact.trim() && !/^\+91\s?[6-9]\d{4}\s?\d{5}$/.test(formData.driverContact.trim())) {
-      newErrors.driverContact = "Invalid driver contact format";
+    if (
+      !Number.isInteger(Number(formData.vehicleYear)) ||
+      Number(formData.vehicleYear) < 1900 ||
+      Number(formData.vehicleYear) > 2100
+    ) {
+      newErrors.vehicleYear = "Vehicle year must be an integer from 1900 to 2100.";
     }
 
     setErrors(newErrors);
@@ -431,22 +428,14 @@ function App() {
   const handleOpenModal = (record?: DeviceVehicleRecord) => {
     setIsEditMode(Boolean(record));
     setSelectedRecord(record ?? null);
-    vehicleIdManuallyEdited.current = false;
     setFormData(record ? {
       deviceId: record.deviceId,
-      deviceType: record.deviceType || initialForm.deviceType,
-      imeiSerial: record.imeiSerial,
-      simMsisdn: record.simMsisdn,
-      manufacturer: record.manufacturer,
-      hardwareModel: record.hardwareModel,
-      deviceStatus: record.deviceStatus.toLowerCase() === "inactive" ? "Inactive" : "Active",
-      vehicleId: record.vehicleId,
+      deviceStatus: record.deviceStatus,
       registrationNumber: record.registrationNumber,
-      vehicleType: record.vehicleType || initialForm.vehicleType,
-      vehicleYear: record.vehicleYear || initialForm.vehicleYear,
-      vehicleLabel: record.vehicleLabel,
-      driverName: record.driverName,
-      driverContact: record.driverContact,
+      vehicleYear: record.vehicleYear,
+      vehicleMake: record.vehicleMake,
+      vehicleModel: record.vehicleModel,
+      vehicleStatus: record.vehicleStatus,
     } : initialForm);
     setErrors({});
     setApiErrorMessage(null);
@@ -461,7 +450,6 @@ function App() {
     setApiErrorMessage(null);
     setIsEditMode(false);
     setSelectedRecord(null);
-    vehicleIdManuallyEdited.current = false;
     setFormData(initialForm);
   };
 
@@ -483,13 +471,13 @@ function App() {
       submissionInProgress.current = false;
       return;
     }
-    const deviceStatus = formData.deviceStatus.toLowerCase();
+    const deviceStatus = formData.deviceStatus;
     const vehiclePayload = {
       plateNumber: formData.registrationNumber.trim().toUpperCase(),
-      make: formData.manufacturer.trim(),
-      model: formData.vehicleLabel.trim() || formData.hardwareModel.trim(),
+      make: formData.vehicleMake.trim(),
+      model: formData.vehicleModel.trim(),
       year: Number(formData.vehicleYear),
-      status: deviceStatus,
+      status: formData.vehicleStatus,
     };
     const devicePayload = { identifier: formData.deviceId.trim(), status: deviceStatus };
     try {
@@ -499,7 +487,10 @@ function App() {
         Authorization: `Bearer ${token}`,
       };
       if (isEditMode && selectedRecord) {
-        const [deviceResponse, vehicleResponse] = await Promise.all([
+        if (!selectedRecord.deviceRecordId || !selectedRecord.vehicleRecordId) {
+          throw new Error("The device or vehicle record ID is missing; no update was sent.");
+        }
+        const [deviceResult, vehicleResult] = await Promise.allSettled([
           fetch(`/api/v1/devices/${encodeURIComponent(selectedRecord.deviceRecordId)}`, {
             method: "PUT", headers, body: JSON.stringify(devicePayload),
           }),
@@ -507,22 +498,27 @@ function App() {
             method: "PUT", headers, body: JSON.stringify(vehiclePayload),
           }),
         ]);
-        if (!deviceResponse.ok || !vehicleResponse.ok) {
-          const failedResponse = !deviceResponse.ok ? deviceResponse : vehicleResponse;
-          throw new Error(errorForStatus(failedResponse.status, "update"));
+        const deviceResponse = deviceResult.status === "fulfilled" ? deviceResult.value : null;
+        const vehicleResponse = vehicleResult.status === "fulfilled" ? vehicleResult.value : null;
+        const deviceUpdated = Boolean(deviceResponse?.ok);
+        const vehicleUpdated = Boolean(vehicleResponse?.ok);
+        if (!deviceUpdated || !vehicleUpdated) {
+          setRetryRecords((previous) => previous + 1);
+          const failedResponse = deviceResponse && !deviceResponse.ok
+            ? deviceResponse
+            : vehicleResponse && !vehicleResponse.ok
+              ? vehicleResponse
+              : null;
+          const failureMessage = failedResponse
+            ? await errorForStatus(failedResponse, "update")
+            : "The server could not be reached while saving the records.";
+          throw new Error(
+            deviceUpdated || vehicleUpdated
+              ? `${failureMessage} One record may already have been updated; the registry is being refreshed.`
+              : failureMessage,
+          );
         }
-        const updated: DeviceVehicleRecord = {
-          ...selectedRecord,
-          deviceId: formData.deviceId.trim(),
-          deviceStatus,
-          registrationNumber: vehiclePayload.plateNumber,
-          manufacturer: vehiclePayload.make,
-          vehicleLabel: vehiclePayload.model,
-          vehicleYear: String(vehiclePayload.year),
-          updatedAt: new Date().toISOString(),
-        };
-        setRecords((previous) => previous.map((record) => record.deviceRecordId === selectedRecord.deviceRecordId ? updated : record));
-        setSelectedRecord(updated);
+        setRetryRecords((previous) => previous + 1);
         setToastMessage("Device & Vehicle updated successfully");
       } else {
         const response = await fetch("/api/v1/setup/vehicle-device", {
@@ -530,17 +526,40 @@ function App() {
           headers,
           body: JSON.stringify({ vehicle: vehiclePayload, device: devicePayload }),
         });
-        if (!response.ok) throw new Error(errorForStatus(response.status, "create"));
-        const payload = await response.json();
-        const data = payload?.data ?? payload;
-        const createdDevice = data?.device ?? {};
-        const createdVehicle = data?.vehicle ?? {};
-        const newRecord = mapRecords([createdDevice], [createdVehicle], true)[0];
-        if (newRecord.deviceRecordId && newRecord.vehicleRecordId) {
-          setRecords((previous) => [newRecord, ...previous]);
-        } else {
+        if (!response.ok) throw new Error(await errorForStatus(response, "create"));
+        const payload: unknown = await response.json();
+        const data =
+          payload && typeof payload === "object" && "data" in payload
+            ? payload.data
+            : undefined;
+        const device =
+          data && typeof data === "object" && "device" in data
+            ? data.device
+            : undefined;
+        const vehicle =
+          data && typeof data === "object" && "vehicle" in data
+            ? data.vehicle
+            : undefined;
+        if (
+          !payload ||
+          typeof payload !== "object" ||
+          !("success" in payload) ||
+          payload.success !== true ||
+          !device ||
+          typeof device !== "object" ||
+          !("id" in device) ||
+          typeof device.id !== "string" ||
+          !vehicle ||
+          typeof vehicle !== "object" ||
+          !("id" in vehicle) ||
+          typeof vehicle.id !== "string" ||
+          !("vehicleId" in device) ||
+          device.vehicleId !== vehicle.id
+        ) {
           setRetryRecords((previous) => previous + 1);
+          throw new Error("The server response did not confirm a correctly linked device and vehicle. The registry is being refreshed.");
         }
+        setRetryRecords((previous) => previous + 1);
         setToastMessage("Device & Vehicle created successfully");
       }
       setIsModalOpen(false);
@@ -747,8 +766,8 @@ function App() {
                 <span className="metric-icon alert-icon">⚠️</span>
               </div>
               <div className="metric-body">
-                <span className="metric-value text-danger">{isLoadingRecords ? "—" : records.filter((record) => record.deviceStatus.toLowerCase() === "maintenance").length}</span>
-                <span className="metric-sub text-danger">Devices in maintenance</span>
+                <span className="metric-value text-danger">{isLoadingRecords ? "—" : records.filter((record) => record.vehicleStatus.toLowerCase() === "maintenance").length}</span>
+                <span className="metric-sub text-danger">Vehicles in maintenance</span>
               </div>
             </div>
           </div>
@@ -770,7 +789,7 @@ function App() {
                   </svg>
                   <input
                     type="text"
-                    placeholder="Search by Device ID, Vehicle ID, or Registration..."
+                    placeholder="Search device, vehicle ID, registration, make, or model..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     aria-label="Filter fleet assets"
@@ -800,11 +819,11 @@ function App() {
               <table className="registry-table">
                 <thead>
                   <tr>
-                    <th>DEVICE ID</th>
-                    <th>DEVICE TYPE</th>
-                    <th>VEHICLE ID</th>
+                    <th>DEVICE IDENTIFIER</th>
+                    <th>VEHICLE RECORD ID</th>
                     <th>REGISTRATION NUMBER</th>
-                    <th>STATUS</th>
+                    <th>MAKE / MODEL</th>
+                    <th>DEVICE STATUS</th>
                     <th>LAST UPDATED</th>
                     <th>ACTIONS</th>
                   </tr>
@@ -825,9 +844,9 @@ function App() {
                   ) : filteredRecords.map((rec) => (
                     <tr key={rec.id}>
                       <td><strong className="code-badge">{highlightMatch(rec.deviceId, debouncedSearch)}</strong></td>
-                      <td>{displayValue(rec.deviceType)}</td>
                       <td><strong className="code-badge vehicle-badge">{highlightMatch(rec.vehicleId, debouncedSearch)}</strong></td>
                       <td className="mono-text">{highlightMatch(rec.registrationNumber, debouncedSearch)}</td>
+                      <td>{highlightMatch(`${rec.vehicleMake} ${rec.vehicleModel}`.trim(), debouncedSearch)}</td>
                       <td><span className={`status-pill ${rec.deviceStatus.toLowerCase()}`}>{displayValue(rec.deviceStatus)}</span></td>
                       <td><small className="text-muted">{formatDate(rec.updatedAt || rec.createdAt)}</small></td>
                       <td>
@@ -835,7 +854,7 @@ function App() {
                           <button className="icon-button" title="View record" aria-label="View record" onClick={() => { setDetailError(null); setSelectedRecord(rec); }}>
                             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M2 10s3-5 8-5 8 5 8 5-3 5-8 5-8-5-8-5Z"/><circle cx="10" cy="10" r="2"/></svg>
                           </button>
-                          <button className="icon-button" title="Edit record" aria-label="Edit record" onClick={() => handleOpenModal(rec)}>
+                          <button className="icon-button" title={rec.vehicleRecordId ? "Edit record" : "Cannot edit without an associated vehicle"} aria-label="Edit record" disabled={!rec.vehicleRecordId} onClick={() => handleOpenModal(rec)}>
                             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="m12.8 4.2 3 3M3 17l3.7-.8L16.4 6.5a2.1 2.1 0 0 0-3-3L3.8 13.2 3 17Z"/></svg>
                           </button>
                           <button className="icon-button" title="Track live location" aria-label="Track live location" onClick={() => setToastMessage("Live tracking coming in Phase 2")}>
@@ -872,7 +891,7 @@ function App() {
                     <span className="flow-badge">PHASE 2</span>
                   </div>
                   <p className="modal-subtitle">
-                    FRD Section 5: Unified dual-entity enrollment with guaranteed atomic association.
+                    Create or update a device and its associated vehicle using fields supported by the API.
                   </p>
                 </div>
               </div>
@@ -893,7 +912,7 @@ function App() {
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
                 <div className="error-text">
-                  <strong>Enrollment Error</strong>
+                  <strong>Request Error</strong>
                   <p>{apiErrorMessage}</p>
                 </div>
               </div>
@@ -901,56 +920,36 @@ function App() {
 
             <form onSubmit={handleSubmit} noValidate className="modal-form">
               <div className="modal-body">
-                {/* SECTION 1: DEVICE MASTER SPECIFICATION (Tasks 6-10) */}
+                {/* Device fields supported by the API */}
                 <fieldset className="form-section">
                   <legend className="section-legend">
                     <span className="section-number">1</span>
-                    <span className="section-title">DEVICE MASTER SPECIFICATION</span>
-                    <span className="gateway-badge">🛡️ Hardware Gateway Ready</span>
+                    <span className="section-title">DEVICE</span>
                   </legend>
 
                   <div className="form-grid">
-                    {/* Device ID */}
                     <div className="field-group">
                       <div className="label-row">
-                        <label htmlFor="deviceId">Device ID <span className="req">*</span></label>
+                        <label htmlFor="deviceId">Device identifier <span className="req">*</span></label>
                         {formData.deviceId.trim() && !errors.deviceId && (
-                          <span className="validated-tag">ID entered</span>
+                          <span className="validated-tag">Identifier entered</span>
                         )}
                       </div>
                       <input
                         id="deviceId"
                         type="text"
-                        placeholder="e.g. GPS-049"
+                        placeholder="IMEI, serial number, or device ID"
                         value={formData.deviceId}
-                        onChange={(e) => handleDeviceIdChange(e.target.value)}
+                        maxLength={100}
+                        onChange={(e) => handleInputChange("deviceId", e.target.value)}
                         className={errors.deviceId ? "input-error" : ""}
                         disabled={isSubmitting}
                       />
                       {errors.deviceId && <span className="field-error-msg">{errors.deviceId}</span>}
                     </div>
 
-                    {/* Device Type */}
                     <div className="field-group">
-                      <label htmlFor="deviceType">Device Type <span className="req">*</span></label>
-                      <select
-                        id="deviceType"
-                        value={formData.deviceType}
-                        onChange={(e) => handleInputChange("deviceType", e.target.value)}
-                        className={errors.deviceType ? "input-error" : ""}
-                        disabled={isSubmitting}
-                      >
-                        <option value="Hardwired GPS">Hardwired GPS</option>
-                        <option value="OBD Tracker">OBD Tracker</option>
-                        <option value="Portable Telematics">Portable Telematics</option>
-                        <option value="Satellite Telematics">Satellite Telematics</option>
-                      </select>
-                      {errors.deviceType && <span className="field-error-msg">{errors.deviceType}</span>}
-                    </div>
-
-                    {/* Device Status (Task 7) */}
-                    <div className="field-group">
-                      <label htmlFor="deviceStatus">Device Status <span className="req">*</span></label>
+                      <label htmlFor="deviceStatus">Device status</label>
                       <select
                         id="deviceStatus"
                         value={formData.deviceStatus}
@@ -958,108 +957,22 @@ function App() {
                         className={errors.deviceStatus ? "input-error" : ""}
                         disabled={isSubmitting}
                       >
-                        <option value="Active">Active</option>
-                        <option value="Inactive">Inactive</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
                       </select>
                       {errors.deviceStatus && <span className="field-error-msg">{errors.deviceStatus}</span>}
-                    </div>
-
-                    {/* IMEI / Serial */}
-                    <div className="field-group">
-                      <label htmlFor="imeiSerial">IMEI / Serial (15 digits) <span className="req">*</span></label>
-                      <input
-                        id="imeiSerial"
-                        type="text"
-                        placeholder="e.g. 864201048892110"
-                        value={formData.imeiSerial}
-                        onChange={(e) => handleInputChange("imeiSerial", e.target.value)}
-                        className={errors.imeiSerial ? "input-error" : ""}
-                        maxLength={18}
-                        disabled={isSubmitting}
-                      />
-                      {errors.imeiSerial && <span className="field-error-msg">{errors.imeiSerial}</span>}
-                    </div>
-
-                    {/* SIM MSISDN */}
-                    <div className="field-group">
-                      <label htmlFor="simMsisdn">SIM MSISDN (+91 format) <span className="req">*</span></label>
-                      <input
-                        id="simMsisdn"
-                        type="text"
-                        placeholder="e.g. +91 98840 55123"
-                        value={formData.simMsisdn}
-                        onChange={(e) => handleInputChange("simMsisdn", e.target.value)}
-                        className={errors.simMsisdn ? "input-error" : ""}
-                        disabled={isSubmitting}
-                      />
-                      {errors.simMsisdn && <span className="field-error-msg">{errors.simMsisdn}</span>}
-                    </div>
-
-                    {/* Hardware Model */}
-                    <div className="field-group">
-                      <label htmlFor="hardwareModel">Hardware Model <span className="req">*</span></label>
-                      <input
-                        id="hardwareModel"
-                        type="text"
-                        placeholder="e.g. FMB920"
-                        value={formData.hardwareModel}
-                        onChange={(e) => handleInputChange("hardwareModel", e.target.value)}
-                        className={errors.hardwareModel ? "input-error" : ""}
-                        disabled={isSubmitting}
-                      />
-                      {errors.hardwareModel && <span className="field-error-msg">{errors.hardwareModel}</span>}
-                    </div>
-
-                    {/* Manufacturer */}
-                    <div className="field-group col-span-3">
-                      <label htmlFor="manufacturer">Manufacturer <span className="req">*</span></label>
-                      <input
-                        id="manufacturer"
-                        type="text"
-                        placeholder="e.g. Teltonika Telematics"
-                        value={formData.manufacturer}
-                        onChange={(e) => handleInputChange("manufacturer", e.target.value)}
-                        className={errors.manufacturer ? "input-error" : ""}
-                        disabled={isSubmitting}
-                      />
-                      {errors.manufacturer && <span className="field-error-msg">{errors.manufacturer}</span>}
                     </div>
                   </div>
                 </fieldset>
 
-                {/* SECTION 2: ASSOCIATED VEHICLE PROFILE (Tasks 11-15) */}
+                {/* Vehicle fields supported by the API */}
                 <fieldset className="form-section">
                   <legend className="section-legend">
                     <span className="section-number">2</span>
-                    <span className="section-title">ASSOCIATED VEHICLE PROFILE</span>
-                    <span className="linkage-badge">Automatic Linkage on Save</span>
+                    <span className="section-title">ASSOCIATED VEHICLE</span>
                   </legend>
 
                   <div className="form-grid">
-                    {/* Vehicle ID */}
-                    <div className="field-group">
-                      <div className="label-row">
-                        <label htmlFor="vehicleId">Vehicle ID <span className="req">*</span></label>
-                        {formData.vehicleId && (
-                          <span className="gen-tag">Generated {formData.vehicleId}</span>
-                        )}
-                      </div>
-                      <input
-                        id="vehicleId"
-                        type="text"
-                        placeholder="e.g. VH-049"
-                        value={formData.vehicleId}
-                        onChange={(e) => {
-                          vehicleIdManuallyEdited.current = true;
-                          handleInputChange("vehicleId", e.target.value);
-                        }}
-                        className={errors.vehicleId ? "input-error" : ""}
-                        disabled={isSubmitting}
-                      />
-                      {errors.vehicleId && <span className="field-error-msg">{errors.vehicleId}</span>}
-                    </div>
-
-                    {/* Registration Number */}
                     <div className="field-group">
                       <label htmlFor="registrationNumber">Registration Number <span className="req">*</span></label>
                       <input
@@ -1068,33 +981,43 @@ function App() {
                         placeholder="e.g. TN 09 BK 4321"
                         value={formData.registrationNumber}
                         onChange={(e) => handleInputChange("registrationNumber", e.target.value)}
+                        maxLength={20}
                         className={errors.registrationNumber ? "input-error" : ""}
                         disabled={isSubmitting}
                       />
                       {errors.registrationNumber && <span className="field-error-msg">{errors.registrationNumber}</span>}
                     </div>
 
-                    {/* Vehicle Type */}
                     <div className="field-group">
-                      <label htmlFor="vehicleType">Vehicle Type <span className="req">*</span></label>
-                      <select
-                        id="vehicleType"
-                        value={formData.vehicleType}
-                        onChange={(e) => handleInputChange("vehicleType", e.target.value)}
-                        className={errors.vehicleType ? "input-error" : ""}
+                      <label htmlFor="vehicleMake">Make <span className="req">*</span></label>
+                      <input
+                        id="vehicleMake"
+                        type="text"
+                        value={formData.vehicleMake}
+                        onChange={(e) => handleInputChange("vehicleMake", e.target.value)}
+                        maxLength={100}
+                        className={errors.vehicleMake ? "input-error" : ""}
                         disabled={isSubmitting}
-                      >
-                        <option value="Heavy Truck">Heavy Truck</option>
-                        <option value="Container Carrier">Container Carrier</option>
-                        <option value="Express Van">Express Van</option>
-                        <option value="Light Commercial">Light Commercial</option>
-                        <option value="Pickup Utility">Pickup Utility</option>
-                      </select>
-                      {errors.vehicleType && <span className="field-error-msg">{errors.vehicleType}</span>}
+                      />
+                      {errors.vehicleMake && <span className="field-error-msg">{errors.vehicleMake}</span>}
                     </div>
 
                     <div className="field-group">
-                      <label htmlFor="vehicleYear">Vehicle Year <span className="req">*</span></label>
+                      <label htmlFor="vehicleModel">Model <span className="req">*</span></label>
+                      <input
+                        id="vehicleModel"
+                        type="text"
+                        value={formData.vehicleModel}
+                        onChange={(e) => handleInputChange("vehicleModel", e.target.value)}
+                        maxLength={100}
+                        className={errors.vehicleModel ? "input-error" : ""}
+                        disabled={isSubmitting}
+                      />
+                      {errors.vehicleModel && <span className="field-error-msg">{errors.vehicleModel}</span>}
+                    </div>
+
+                    <div className="field-group">
+                      <label htmlFor="vehicleYear">Year <span className="req">*</span></label>
                       <input
                         id="vehicleYear"
                         type="number"
@@ -1108,45 +1031,18 @@ function App() {
                       {errors.vehicleYear && <span className="field-error-msg">{errors.vehicleYear}</span>}
                     </div>
 
-                    {/* Vehicle Display Label */}
                     <div className="field-group">
-                      <label htmlFor="vehicleLabel">Vehicle Display Label</label>
-                      <input
-                        id="vehicleLabel"
-                        type="text"
-                        placeholder="e.g. Express Freight 14"
-                        value={formData.vehicleLabel}
-                        onChange={(e) => handleInputChange("vehicleLabel", e.target.value)}
+                      <label htmlFor="vehicleStatus">Vehicle status</label>
+                      <select
+                        id="vehicleStatus"
+                        value={formData.vehicleStatus}
+                        onChange={(e) => handleInputChange("vehicleStatus", e.target.value)}
                         disabled={isSubmitting}
-                      />
-                    </div>
-
-                    {/* Driver Name */}
-                    <div className="field-group">
-                      <label htmlFor="driverName">Assigned Driver Name</label>
-                      <input
-                        id="driverName"
-                        type="text"
-                        placeholder="e.g. Karthik Selvam"
-                        value={formData.driverName}
-                        onChange={(e) => handleInputChange("driverName", e.target.value)}
-                        disabled={isSubmitting}
-                      />
-                    </div>
-
-                    {/* Driver Contact */}
-                    <div className="field-group">
-                      <label htmlFor="driverContact">Driver Mobile Contact</label>
-                      <input
-                        id="driverContact"
-                        type="text"
-                        placeholder="e.g. +91 96001 92834"
-                        value={formData.driverContact}
-                        onChange={(e) => handleInputChange("driverContact", e.target.value)}
-                        className={errors.driverContact ? "input-error" : ""}
-                        disabled={isSubmitting}
-                      />
-                      {errors.driverContact && <span className="field-error-msg">{errors.driverContact}</span>}
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="maintenance">Maintenance</option>
+                      </select>
                     </div>
                   </div>
                 </fieldset>
@@ -1156,9 +1052,7 @@ function App() {
                   <div className="shield-icon" aria-hidden="true">🛡️</div>
                   <div>
                     <strong>Identifiers are checked by the server.</strong>
-                    <p>
-                      The API creates the device and vehicle together. Duplicate identifiers are reported here without changing the registry.
-                    </p>
+                    <p>Creation saves both records together. The server enforces unique device identifiers and vehicle registration numbers.</p>
                   </div>
                 </div>
               </div>
@@ -1218,7 +1112,7 @@ function App() {
                 <h2 id="detail-title">{displayValue(selectedRecord.deviceId)}</h2>
               </div>
               <div className="drawer-actions">
-                <button className="secondary-button" onClick={() => handleOpenModal(selectedRecord)}>Edit</button>
+                <button className="secondary-button" disabled={!selectedRecord.vehicleRecordId} onClick={() => handleOpenModal(selectedRecord)}>Edit</button>
                 <button className="icon-button" title="Close details" aria-label="Close details" onClick={() => setSelectedRecord(null)}>×</button>
               </div>
             </header>
@@ -1236,24 +1130,19 @@ function App() {
               <section className="detail-section">
                 <h3>Device Master</h3>
                 <dl>
-                  <div><dt>Device ID</dt><dd>{displayValue(selectedRecord.deviceId)}</dd></div>
-                  <div><dt>Device Type</dt><dd>{displayValue(selectedRecord.deviceType)}</dd></div>
-                  <div><dt>IMEI / Serial Number</dt><dd>{displayValue(selectedRecord.imeiSerial)}</dd></div>
-                  <div><dt>SIM MSISDN</dt><dd>{displayValue(selectedRecord.simMsisdn)}</dd></div>
-                  <div><dt>Manufacturer</dt><dd>{displayValue(selectedRecord.manufacturer)}</dd></div>
-                  <div><dt>Hardware Model</dt><dd>{displayValue(selectedRecord.hardwareModel)}</dd></div>
+                  <div><dt>Device identifier</dt><dd>{displayValue(selectedRecord.deviceId)}</dd></div>
                   <div><dt>Device Status</dt><dd><span className={`status-pill ${selectedRecord.deviceStatus.toLowerCase()}`}>{displayValue(selectedRecord.deviceStatus)}</span></dd></div>
                 </dl>
               </section>
               <section className="detail-section">
                 <h3>Vehicle Profile</h3>
                 <dl>
-                  <div><dt>Vehicle ID</dt><dd>{displayValue(selectedRecord.vehicleId)}</dd></div>
+                  <div><dt>Vehicle record ID</dt><dd>{displayValue(selectedRecord.vehicleId)}</dd></div>
                   <div><dt>Registration Number</dt><dd>{displayValue(selectedRecord.registrationNumber)}</dd></div>
-                  <div><dt>Vehicle Type</dt><dd>{displayValue(selectedRecord.vehicleType)}</dd></div>
-                  <div><dt>Vehicle Display Label</dt><dd>{displayValue(selectedRecord.vehicleLabel)}</dd></div>
-                  <div><dt>Assigned Driver Name</dt><dd>{displayValue(selectedRecord.driverName)}</dd></div>
-                  <div><dt>Driver Mobile Contact</dt><dd>{displayValue(selectedRecord.driverContact)}</dd></div>
+                  <div><dt>Make</dt><dd>{displayValue(selectedRecord.vehicleMake)}</dd></div>
+                  <div><dt>Model</dt><dd>{displayValue(selectedRecord.vehicleModel)}</dd></div>
+                  <div><dt>Year</dt><dd>{displayValue(selectedRecord.vehicleYear)}</dd></div>
+                  <div><dt>Vehicle status</dt><dd>{displayValue(selectedRecord.vehicleStatus)}</dd></div>
                 </dl>
               </section>
               <section className="detail-section">
