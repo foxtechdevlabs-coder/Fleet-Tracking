@@ -17,6 +17,15 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
 }
 
+.menu-toggle {
+  display: none;
+  border: 0;
+  background: transparent;
+  color: #263a54;
+  padding: 7px;
+  cursor: pointer;
+}
+
 /* Logo */
 
 .nav-logo {
@@ -240,6 +249,13 @@
 
   .nav-logo {
     width: auto;
+  }
+
+  .menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 2px;
   }
 
   .phase-badge,

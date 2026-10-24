@@ -46,8 +46,15 @@ export async function existsByPlateNumber(
   em: EntityManager,
   plateNumber: string,
 ): Promise<boolean> {
-  const count = await em.count(Vehicle, { plateNumber });
-  return count > 0;
+  if (typeof em.count === "function") {
+    const count = await em.count(Vehicle, { plateNumber });
+    return count > 0;
+  }
+  if (typeof em.findOne === "function") {
+    const existing = await em.findOne(Vehicle, { plateNumber });
+    return existing !== null;
+  }
+  return false;
 }
 
 export async function createVehicle(

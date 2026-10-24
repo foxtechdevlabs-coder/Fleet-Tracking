@@ -142,18 +142,19 @@
 
 @media (max-width: 800px) {
   .sidebar {
-    width: 68px;
-    padding: 14px 8px;
+    width: min(225px, 82vw);
+    padding: 18px 14px;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: 8px 0 24px rgba(15, 23, 42, 0.12);
   }
 
-  .side-title,
-  .side-label,
-  .nodes-status {
-    display: none;
+  .sidebar.sidebar-open {
+    transform: translateX(0);
   }
 
   .side-item {
-    justify-content: center;
-    padding: 0;
+    justify-content: flex-start;
+    padding: 0 12px;
   }
 }

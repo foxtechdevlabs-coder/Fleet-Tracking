@@ -12,7 +12,7 @@ import {
 import "./Side.css";
 import { useAuth } from "../../auth/AuthContext";
 
-function Side() {
+function Side({ isOpen, onClose }) {
   const { admin } = useAuth();
   const menuItems = [
     {
@@ -53,7 +53,7 @@ function Side() {
   ];
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${isOpen ? " sidebar-open" : ""}`}>
       {/* Menu Title */}
       <div className="side-title">OPERATIONAL FLEET MENU</div>
 
@@ -68,6 +68,7 @@ function Side() {
             className={({ isActive }) =>
               `side-item ${isActive ? "side-item-active" : ""}`
             }
+            onClick={onClose}
           >
             <span className="side-icon">{item.icon}</span>
             <span className="side-label">{item.name}</span>

@@ -31,6 +31,31 @@
   text-align: left;
 }
 
+.async-state-message {
+  flex: 1;
+}
+
+.async-state-action {
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.async-state-action:hover {
+  background: rgba(255, 255, 255, 0.55);
+}
+
 .async-state-compact {
   min-height: 0;
   padding: 0;
@@ -55,6 +80,37 @@
 }
 
 .async-state-empty span {
+  max-width: 440px;
+  line-height: 1.5;
+}
+
+.async-state-unauthorized,
+.async-state-unavailable {
+  flex-direction: column;
+  gap: 8px;
+  color: #64748b;
+}
+
+.async-state-unauthorized {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.async-state-unavailable {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.async-state-unauthorized strong,
+.async-state-unavailable strong {
+  color: #334155;
+  font-size: 14px;
+}
+
+.async-state-unauthorized span,
+.async-state-unavailable span {
   max-width: 440px;
   line-height: 1.5;
 }

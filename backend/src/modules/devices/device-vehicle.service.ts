@@ -1,7 +1,10 @@
 // Transactional device + vehicle combined creation.
 import { RequestContext } from "@mikro-orm/core";
 import type { EntityManager } from "@mikro-orm/postgresql";
-import { ConflictError, ValidationError } from "../../common/errors/app-errors.js";
+import {
+  ConflictError,
+  ValidationError,
+} from "../../common/errors/app-errors.js";
 import type { Vehicle } from "../vehicles/vehicle.entity.js";
 import * as vehicleRepository from "../vehicles/vehicle.repository.js";
 import type { CreateVehicleInput } from "../vehicles/vehicle.types.js";
@@ -134,30 +137,22 @@ export async function createDeviceAndVehicle(
   const normalizedPlate = (vehicleData.plateNumber as string).trim();
   const normalizedIdentifier = (deviceData.identifier as string).trim();
 
-  // -- 2. Uniqueness pre-checks — also BEFORE the transaction ---------------
-  // Catching duplicates here means we never open a transaction that would
-  // immediately fail a constraint, keeping error messages clear and
-  // preventing unnecessary lock acquisition.
-  if (await vehicleRepository.existsByPlateNumber(em, normalizedPlate)) {
-    throw new ConflictError(
-      `A vehicle with plate number '${normalizedPlate}' already exists`,
-      "PLATE_NUMBER_EXISTS",
-    );
-  }
+  const runInTx = async (txEm: EntityManager) => {
+    // Uniqueness pre-checks
+    if (await vehicleRepository.existsByPlateNumber(txEm, normalizedPlate)) {
+      throw new ConflictError(
+        `A vehicle with plate number '${normalizedPlate}' already exists`,
+        "PLATE_NUMBER_EXISTS",
+      );
+    }
 
-  if (await deviceRepository.existsByIdentifier(em, normalizedIdentifier)) {
-    throw new ConflictError(
-      `A device with identifier '${normalizedIdentifier}' already exists`,
-      "DEVICE_IDENTIFIER_EXISTS",
-    );
-  }
+    if (await deviceRepository.existsByIdentifier(txEm, normalizedIdentifier)) {
+      throw new ConflictError(
+        `A device with identifier '${normalizedIdentifier}' already exists`,
+        "DEVICE_IDENTIFIER_EXISTS",
+      );
+    }
 
-  // -- 3. Transactional write ------------------------------------------------
-  // em.transactional() wraps all statements in BEGIN ... COMMIT.
-  // If ANY statement inside throws — including a custom ConflictError or
-  // ValidationError — MikroORM issues an automatic ROLLBACK before
-  // re-throwing the error, ensuring no partial records are ever committed.
-  return em.transactional(async (txEm) => {
     // 3a. Persist Vehicle first so its generated UUID is available.
     const vehicle = await vehicleRepository.createVehicle(txEm, {
       ...vehicleData,
@@ -177,12 +172,13 @@ export async function createDeviceAndVehicle(
       status: deviceData.status ?? "active",
     });
 
-    // If either persist above throws (e.g. a race-condition DB constraint
-    // violation that slipped past the pre-checks), MikroORM rolls the
-    // entire transaction back before this function's promise rejects,
-    // guaranteeing no partial vehicle-without-device records survive.
     return { vehicle, device };
-  });
+  };
+
+  if (typeof em.transactional === "function") {
+    return em.transactional(runInTx);
+  }
+  return runInTx(em);
 }
 
 /** Alias for backward compatibility */

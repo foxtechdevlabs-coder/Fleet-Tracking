@@ -56,7 +56,7 @@ function Login() {
       const destination = location.state?.from;
       const redirectTo = destination && destination.pathname !== "/login"
         ? `${destination.pathname}${destination.search || ""}${destination.hash || ""}`
-        : "/dashboard";
+        : "/device-vehicle";
       navigate(redirectTo, { replace: true });
     } catch (error) {
       setApiError(
@@ -72,7 +72,7 @@ function Login() {
     const destination = location.state?.from;
     const redirectTo = destination && destination.pathname !== "/login"
       ? `${destination.pathname}${destination.search || ""}${destination.hash || ""}`
-      : "/dashboard";
+      : "/device-vehicle";
     return <Navigate to={redirectTo} replace />;
   }
 

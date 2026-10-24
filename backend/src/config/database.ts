@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ConnectionOptions } from "node:tls";
 import { fileURLToPath } from "node:url";
+import type { LoggerNamespace } from "@mikro-orm/core";
 import { env, isDevelopment } from "./env.js";
 
 // backend/ — the same from src/config/ (tsx) and dist/config/ (compiled), so a relative
@@ -48,8 +49,15 @@ function ssl(): false | ConnectionOptions {
   }
 }
 
+// MikroORM query logging, development only. Never enable `query-params` (or `debug: true`,
+// which includes it): it logs SQL with the values inlined, e.g. emails and password hashes.
+// Without it, SQL is logged with `?` placeholders.
+const debug: LoggerNamespace[] | false = isDevelopment
+  ? ["query", "info"]
+  : false;
+
 export const databaseConfig = {
   url: env.databaseUrl,
-  debug: isDevelopment,
+  debug,
   ssl: ssl(),
 } as const;

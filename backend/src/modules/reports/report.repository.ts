@@ -18,7 +18,20 @@ export function findLocationReport(
   if (filters.vehicleId) where.vehicleId = filters.vehicleId;
   if (filters.deviceId) where.deviceId = filters.deviceId;
 
-  return em.find(LocationHistory, where, {
+  const options: {
+    orderBy: { recordedAt: "ASC"; id: "ASC" };
+    limit?: number;
+    offset?: number;
+  } = {
     orderBy: { recordedAt: "ASC", id: "ASC" },
-  });
+  };
+
+  if (filters.limit !== undefined) {
+    options.limit = filters.limit;
+  }
+  if (filters.offset !== undefined) {
+    options.offset = filters.offset;
+  }
+
+  return em.find(LocationHistory, where, options);
 }

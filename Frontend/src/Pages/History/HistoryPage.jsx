@@ -1,4 +1,4 @@
-import { EmptyState } from "../../Components/Feedback/AsyncState";
+import { ApiUnavailableState } from "../../Components/Feedback/AsyncState";
 
 function HistoryPage() {
   return (
@@ -10,8 +10,8 @@ function HistoryPage() {
           <p>Historical sensor events and trip records.</p>
         </div>
       </div>
-      <EmptyState
-        title="No history data loaded"
+      <ApiUnavailableState
+        title="History data unavailable"
         message="Telemetry history will appear here when the history API is connected."
       />
     </main>

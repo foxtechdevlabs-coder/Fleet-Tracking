@@ -1,6 +1,10 @@
 .provision-header {
   padding-top: 22px;
   margin-bottom: 20px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .back-link {
@@ -187,6 +191,152 @@
   cursor: not-allowed;
 }
 
+.secondary-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #d8e1ed;
+  border-radius: 6px;
+  background: #edf2f8;
+  color: #334155;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondary-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.registry-section {
+  margin-top: 32px;
+}
+
+.registry-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.registry-heading h2 {
+  margin-top: 4px;
+  color: #142c4d;
+  font-size: 18px;
+}
+
+.record-count {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.registry-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.registry-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  color: #334155;
+  font-size: 12px;
+}
+
+.registry-table th,
+.registry-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #edf1f7;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.registry-table th {
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.registry-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.registry-table td strong,
+.registry-table td small {
+  display: block;
+}
+
+.registry-table td strong {
+  color: #1e3e62;
+  font-weight: 700;
+}
+
+.registry-table td small {
+  margin-top: 3px;
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.status-badge {
+  display: inline-flex;
+  padding: 4px 7px;
+  border-radius: 4px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.row-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.row-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #dbe3ed;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #526277;
+  cursor: pointer;
+}
+
+.row-actions button:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #1e3e62;
+}
+
+.row-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .btn-spinner {
   width: 14px;
   height: 14px;
@@ -201,6 +351,10 @@
 }
 
 @media (max-width: 850px) {
+  .provision-header {
+    flex-direction: column;
+  }
+
   .provision-grid {
     grid-template-columns: 1fr;
   }

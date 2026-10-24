@@ -7,6 +7,7 @@ import { Admin } from "../../src/modules/admins/admin.entity.js";
 import { createAccessToken } from "../../src/modules/auth/auth.service.js";
 import { RevokedToken } from "../../src/modules/auth/revoked-token.entity.js";
 import { Device } from "../../src/modules/devices/device.entity.js";
+import { parseLocationReportFilters } from "../../src/modules/reports/report.schema.js";
 import { LocationHistory } from "../../src/modules/tracking/location.entity.js";
 import { Vehicle } from "../../src/modules/vehicles/vehicle.entity.js";
 
@@ -463,5 +464,59 @@ describe("GET /api/v1/reports/locations", () => {
     } finally {
       log.mockRestore();
     }
+  });
+
+  it("converts speed to mph when speedUnit=mph is requested", async () => {
+    const db = createDatabase();
+    const response = await getReport(
+      db.app,
+      db.auth,
+      `?deviceIdentifier=${db.device.identifier}&speedUnit=mph`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.data[0].speed).toBe(28.27); // 45.5 km/h * 0.621371 = 28.27 mph
+  });
+
+  it("formats recordedAt in target timezone when timezone is provided", async () => {
+    const db = createDatabase();
+    const response = await getReport(
+      db.app,
+      db.auth,
+      `?deviceIdentifier=${db.device.identifier}&timezone=Asia/Kolkata`,
+    );
+
+    expect(response.status).toBe(200);
+    // 2026-01-01T00:00:00.000Z in Asia/Kolkata is 2026-01-01T05:30:00.000+05:30
+    expect(response.body.data[0].recordedAt).toContain("+05:30");
+    expect(response.body.data[0].recordedAt).toContain("05:30:00");
+  });
+
+  it("rejects invalid speedUnit, invalid timezone, and invalid limit", async () => {
+    const db = createDatabase();
+
+    const invalidUnit = await getReport(db.app, db.auth, "?speedUnit=knots");
+    expect(invalidUnit.status).toBe(400);
+    expect(invalidUnit.body.code).toBe("VALIDATION_ERROR");
+
+    const invalidTz = await getReport(
+      db.app,
+      db.auth,
+      "?timezone=Invalid/Zone",
+    );
+    expect(invalidTz.status).toBe(400);
+    expect(invalidTz.body.code).toBe("VALIDATION_ERROR");
+
+    const invalidLimit = await getReport(db.app, db.auth, "?limit=99999");
+    expect(invalidLimit.status).toBe(400);
+    expect(invalidLimit.body.code).toBe("VALIDATION_ERROR");
+  });
+});
+
+describe("report date filters and the GPS clock-skew limit", () => {
+  it("still accepts a future 'to' (the skew limit applies to ingestion only)", () => {
+    expect(
+      parseLocationReportFilters({ to: "2099-12-31T23:59:59.000Z" }).to,
+    ).toEqual(new Date("2099-12-31T23:59:59.000Z"));
   });
 });

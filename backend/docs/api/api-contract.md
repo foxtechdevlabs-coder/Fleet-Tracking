@@ -136,7 +136,12 @@ same-time readings therefore cannot replace the current position. No age-based
 stale-reading cutoff is defined. Its `recorded_at` value is backfilled from
 the newest valid history row for each Vehicle by the accompanying migration.
 
-`recordedAt` must be a valid ISO 8601 timestamp with a timezone. Latitude and
+`recordedAt` must be a valid ISO 8601 timestamp with a timezone, and may be at
+most `GPS_MAX_CLOCK_SKEW_SECONDS` (default 300) ahead of the server clock;
+later timestamps are rejected with `400 VALIDATION_ERROR`, so a device with a
+wrong clock cannot pin a Vehicle's live position in the future and block every
+correct reading after it. Delayed and out-of-order (older) readings have no
+age limit and are still stored. Latitude and
 longitude must be within [-90, 90] and [-180, 180]. Supplied speed must be
 finite and non-negative; heading must be within [0, 360]; altitude must be
 finite. Invalid input is rejected with `400 VALIDATION_ERROR` before
@@ -162,9 +167,126 @@ The existing `src/modules/tracking/location.processor.ts` remains a placeholder;
 the new endpoint service performs validation, registered-device resolution, and
 location-history persistence. Repeated ingestions with the same registered
 Device and `recordedAt` return the original record; a unique database index
-protects this idempotency key under concurrent requests. Socket.IO is not
-installed or exposed, so this flow does not emit realtime events. No vendor
-protocol or hardware-specific payload is assumed.
+protects this idempotency key under concurrent requests. After the transaction
+commits, a reading that became the Vehicle's live position is broadcast as a
+`vehicle:location` Socket.IO event (see "Realtime vehicle locations");
+duplicates and older readings are not broadcast. No vendor protocol or
+hardware-specific payload is assumed.
+
+## Latest vehicle locations
+
+`GET /api/v1/tracking/latest` requires an administrator bearer token and returns
+the stored live position of each Vehicle from `latest_locations`, ordered by
+`vehicleId`: `vehicleId`, `latitude`, `longitude`, nullable `speed` and
+`heading`, `recordedAt`, and `updatedAt`. The optional `vehicleIds` query
+parameter is a comma-separated list of 1-500 Vehicle UUIDs; without it, all
+Vehicles with a position are returned. Unknown IDs and Vehicles without a
+position are omitted. Malformed IDs or unsupported query parameters return
+`400 VALIDATION_ERROR`. Clients use it for the map's initial load and after a
+realtime reconnect, to catch up on events missed while disconnected.
+
+The GET form is kept for compatibility, but the query string is limited by the
+server's 16 KB request-header limit: more than about 430 UUIDs is rejected by
+Node with `431 Request Header Fields Too Large` (not a JSON error) before the
+API runs. For longer lists use the POST form.
+
+`POST /api/v1/tracking/latest` requires an administrator bearer token and
+returns the same data for the IDs in a JSON body:
+
+```json
+{ "vehicleIds": ["22222222-2222-4222-8222-222222222222"] }
+```
+
+- `vehicleIds` must be a JSON array of strings (a comma-separated string is not
+  accepted) and no other body fields are allowed.
+- IDs are trimmed and lowercased, and duplicates are removed **before** the
+  limit is applied: 1-500 unique UUIDs, from at most 1000 raw entries.
+- Unknown IDs and Vehicles without a position are omitted; a request with only
+  unknown IDs returns `200` with an empty `data` array.
+- Empty arrays, empty or malformed IDs, more than 500 unique IDs, more than 1000
+  entries, or extra fields return `400 VALIDATION_ERROR` in the standard error
+  envelope. The endpoint is read-only.
+
+## Realtime vehicle locations
+
+Socket.IO is served by the same HTTP server and port as the API, at the default
+path `/socket.io`, with the same CORS origins (`FRONTEND_ORIGINS`).
+
+- **Authentication:** connect with `io(apiOrigin, { auth: { token } })` using
+  the administrator access token (a `Bearer ` prefix is optional). The token is
+  checked like `requireAdmin`: signature, expiry, active administrator, and
+  not revoked. Tokens are not accepted in the URL. Refusals arrive as
+  `connect_error` whose `message` is the error code and whose `data` says
+  whether retrying helps (see "Errors and retry").
+- **Subscriptions:** a socket receives updates only for Vehicles it subscribes
+  to. Emit `vehicles:subscribe` with `{ vehicleIds: string[] }` and an
+  acknowledgement callback; the reply is
+  `{ ok: true, subscribed: string[], unknown: string[] }` (`subscribed` is the
+  socket's full set after the request, `unknown` lists valid UUIDs with no such
+  Vehicle) or `{ ok: false, error: { code, message, retryable, retryAfterMs? } }`. A request may carry
+  1-500 IDs and a socket may follow at most 500 Vehicles; only existing
+  Vehicles the socket does not already follow count toward that cap, and the cap
+  holds even for concurrent subscribe requests (otherwise
+  `TOO_MANY_SUBSCRIPTIONS`, not retryable). `vehicles:unsubscribe`
+  takes the same payload. Each subscribe re-checks the session; an invalid
+  session is answered with `UNAUTHORIZED` and disconnected.
+- **`vehicle:location`:** sent to subscribers of that Vehicle only, after the
+  ingestion transaction commits and only when the reading became the live
+  position. Payload: `locationId`, `vehicleId`, `deviceId`, `latitude`,
+  `longitude`, nullable `speed`, `heading`, and `altitude`, and ISO 8601
+  `recordedAt` and `ingestedAt`. Clients should ignore an event whose
+  `recordedAt` is not newer than the position they display, or whose
+  `locationId` they already applied.
+- **Session end:** when the access token expires, or on
+  `POST /api/v1/auth/logout` with that token, the server emits
+  `session:ended` with `{ reason: "token_expired" | "logged_out" | "unauthorized" }`
+  and disconnects the socket. Clients should log in again rather than reconnect
+  with the same token.
+- **Errors and retry:** every socket error says whether retrying can help.
+
+  | Code | Where | `retryable` | Client action |
+  | --- | --- | --- | --- |
+  | `UNAUTHORIZED` | `connect_error`, subscribe ack | `false` | Token missing, invalid, expired or revoked, or admin inactive: send the admin to login. |
+  | `SERVICE_UNAVAILABLE` | `connect_error`, subscribe ack | `true` | The server could not check the session or run the request (e.g. database outage). The token was **not** judged invalid: keep the session and retry after `retryAfterMs` (2000), with backoff. A subscribe failure leaves the socket connected. |
+  | `TOO_MANY_REQUESTS` | subscribe ack | `true` | Retry after `retryAfterMs` (60000). |
+  | `VALIDATION_ERROR`, `TOO_MANY_SUBSCRIPTIONS` | subscribe ack | `false` | Fix the request. |
+
+  socket.io-client does **not** reconnect by itself after a `connect_error`
+  from the server's authentication step, so the client must do it:
+
+  ```ts
+  socket.on("connect_error", (err) => {
+    const data = err.data as { retryable?: boolean; retryAfterMs?: number } | undefined;
+    if (data?.retryable) {
+      setTimeout(() => socket.connect(), Math.max(data.retryAfterMs ?? 2000, backoffMs()));
+    } else if (err.message === "UNAUTHORIZED") {
+      logout(); // only here; never for SERVICE_UNAVAILABLE
+    }
+    // Other connect_error messages (network, TOO_MANY_CONNECTION* 403s) are
+    // retried automatically by socket.io-client's own reconnection.
+  });
+  ```
+
+  REST requests behave the same way: an authentication check that cannot reach
+  the database returns `500 INTERNAL_SERVER_ERROR`, not `401`, so clients should
+  log out only on `401`.
+- **Reconnect:** on every (re)connect, re-emit `vehicles:subscribe`, then call
+  `POST /api/v1/tracking/latest` with the subscribed Vehicle IDs (the GET form
+  works for up to about 430 IDs).
+- **Abuse limits** (per process, configurable in `.env`): per client IP, at most
+  `SOCKET_CONNECTIONS_PER_MINUTE` (default 30) new connection attempts per
+  minute and `SOCKET_MAX_CONNECTIONS_PER_IP` (default 20) open connections.
+  Both are checked before authentication; refused handshakes get HTTP 403 with
+  `{ "code": 4, "message": "TOO_MANY_CONNECTION_ATTEMPTS" | "TOO_MANY_CONNECTIONS" }`,
+  which socket.io-client reports as `connect_error`. Each socket may send at most
+  `SOCKET_SUBSCRIPTIONS_PER_MINUTE` (default 30) subscribe/unsubscribe requests
+  per minute; more are answered with `TOO_MANY_REQUESTS` without further work.
+  Messages over 64 KB close the connection, and a connection that does not
+  complete the Socket.IO handshake within 10 seconds is dropped. Invalid,
+  forged or expired tokens are rejected without a database query. Clients
+  should reconnect with backoff (socket.io-client's default).
+- **Limits:** rooms and connections live in one process's memory. Running more
+  than one API instance requires a shared Socket.IO adapter (for example Redis).
 
 ## Location reports
 
@@ -191,7 +313,6 @@ implemented.
 
 | Method | Path | Purpose / initial request fields |
 | --- | --- | --- |
-| `GET` | `/api/v1/tracking/vehicles/{vehicleId}/latest` | Return the most recent known coordinates and update time. |
 | `GET` | `/api/v1/tracking/vehicles/{vehicleId}/history` | Query location history with `from`, `to`, `limit`, and `cursor`. |
 | `GET`, `POST` | `/api/v1/trips` | List or create trips; creation associates a `vehicleId` and start coordinates/time. |
 | `GET`, `POST` | `/api/v1/telemetry` | Query events or ingest an event with `deviceId`, `eventType`, `recordedAt`, and `payload`. |
@@ -217,8 +338,9 @@ small process probe.
 - **GPS devices:** preserve the existing vendor-neutral GPS adapter boundary.
   Normalize vendor input before location persistence; do not assume a device
   vendor or wire protocol.
-- **Live updates:** the architecture plans Socket.IO events for new locations
-  and trip changes. Socket.IO is not yet installed or exposed to clients.
+- **Live updates:** Socket.IO `vehicle:location` events are implemented for
+  live positions (see "Realtime vehicle locations"). Trip-change events are not
+  implemented.
 - **Authentication:** administrator login, logout revocation, current-profile
   lookup, and protected vehicle/device routes are implemented. Public signup,
   password reset, token refresh, and role-specific authorization are not

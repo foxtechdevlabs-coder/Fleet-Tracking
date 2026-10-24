@@ -19,7 +19,7 @@
 
 @media (max-width: 800px) {
   .content {
-    margin-left: 68px;
+    margin-left: 0;
     padding-left: 16px;
     padding-right: 16px;
   }

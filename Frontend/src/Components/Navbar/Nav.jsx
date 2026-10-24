@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Clock, LogOut, ChevronRight } from "lucide-react";
+import { Clock, LogOut, ChevronRight, Menu } from "lucide-react";
 import "./Nav.css";
 import logo from "./logo.svg";
 import { useAuth } from "../../auth/AuthContext";
@@ -15,7 +15,7 @@ const routeTitles = {
   "/settings": "System Settings"
 };
 
-function Nav() {
+function Nav({ onToggleSidebar }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { admin, logout } = useAuth();
@@ -63,6 +63,16 @@ function Nav() {
 
   return (
     <header className="top-nav">
+      <button
+        className="menu-toggle"
+        type="button"
+        onClick={onToggleSidebar}
+        aria-label="Open navigation menu"
+        title="Open navigation menu"
+      >
+        <Menu size={20} />
+      </button>
+
       {/* Logo */}
       <Link to="/dashboard" className="nav-logo" title="FleetTrack Home">
         <img className="logo-icon" src={logo} alt="FleetTrack Logo" />

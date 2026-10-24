@@ -1,4 +1,4 @@
-import { EmptyState } from "../../Components/Feedback/AsyncState";
+import { ApiUnavailableState } from "../../Components/Feedback/AsyncState";
 import "./FleetPage.css";
 
 function FleetPage() {
@@ -11,8 +11,8 @@ function FleetPage() {
           <p>Registered vehicles and assigned devices.</p>
         </div>
       </div>
-      <EmptyState
-        title="No fleet records loaded"
+      <ApiUnavailableState
+        title="Fleet data unavailable"
         message="Fleet records will appear here when the vehicle and device APIs are connected."
       />
     </main>
