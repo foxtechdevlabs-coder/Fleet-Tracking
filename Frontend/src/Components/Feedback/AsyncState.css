@@ -1,0 +1,126 @@
+.async-state-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: async-state-spin 0.7s linear infinite;
+}
+
+.async-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 96px;
+  padding: 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #64748b;
+  font-size: 13px;
+  text-align: center;
+}
+
+.async-state-error {
+  justify-content: flex-start;
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+  text-align: left;
+}
+
+.async-state-message {
+  flex: 1;
+}
+
+.async-state-action {
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.async-state-action:hover {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.async-state-compact {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.async-state-compact .async-state-spinner {
+  flex: 0 0 auto;
+}
+
+.async-state-empty {
+  flex-direction: column;
+  gap: 8px;
+  color: #64748b;
+}
+
+.async-state-empty strong {
+  color: #334155;
+  font-size: 14px;
+}
+
+.async-state-empty span {
+  max-width: 440px;
+  line-height: 1.5;
+}
+
+.async-state-unauthorized,
+.async-state-unavailable {
+  flex-direction: column;
+  gap: 8px;
+  color: #64748b;
+}
+
+.async-state-unauthorized {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.async-state-unavailable {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.async-state-unauthorized strong,
+.async-state-unavailable strong {
+  color: #334155;
+  font-size: 14px;
+}
+
+.async-state-unauthorized span,
+.async-state-unavailable span {
+  max-width: 440px;
+  line-height: 1.5;
+}
+
+@keyframes async-state-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .async-state-spinner {
+    animation-duration: 1.5s;
+  }
+}
