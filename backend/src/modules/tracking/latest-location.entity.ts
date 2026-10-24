@@ -8,6 +8,7 @@ export class LatestLocation {
   longitude!: number;
   speed!: number | null;
   heading!: number | null;
+  recordedAt!: Date;
   updatedAt!: Date;
 }
 
@@ -48,6 +49,12 @@ export const LatestLocationSchema = new EntitySchema<LatestLocation>({
       columnType: "real",
       nullable: true,
       comment: "Heading in degrees (0–360)",
+    },
+    recordedAt: {
+      type: "Date",
+      columnType: "timestamptz",
+      fieldName: "recorded_at",
+      comment: "Timestamp of the location currently stored for this vehicle",
     },
     updatedAt: {
       type: "Date",

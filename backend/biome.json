@@ -1,6 +1,12 @@
 {
   "files": {
-    "includes": ["**", "!**/dist", "!**/node_modules", "!**/coverage"]
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/node_modules",
+      "!**/coverage",
+      "!src/database/migrations"
+    ]
   },
   "formatter": {
     "enabled": true,

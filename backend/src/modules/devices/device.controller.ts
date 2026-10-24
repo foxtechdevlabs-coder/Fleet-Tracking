@@ -1,4 +1,6 @@
 // Device HTTP controllers.
+
+import { UniqueConstraintViolationException } from "@mikro-orm/core";
 import type { RequestHandler } from "express";
 import { AppError } from "../../common/errors/app-error.js";
 import { getEntityManager } from "../../common/middleware/entity-manager.js";
@@ -30,15 +32,16 @@ function pagination(req: Parameters<RequestHandler>[0]) {
 
 function conflict(error: unknown): never {
   if (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "23505"
+    error instanceof UniqueConstraintViolationException ||
+    (typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "23505")
   ) {
     throw new AppError(
       409,
       "DEVICE_IDENTIFIER_EXISTS",
-      "A device with this identifier already exists",
+      "Device identifier already exists",
     );
   }
   throw error;
@@ -51,7 +54,12 @@ export const list: RequestHandler = async (req, res) => {
     limit,
     offset,
   );
-  res.json({ data: devices, meta: { page, limit, total } });
+  res.json({
+    success: true,
+    message: "Devices retrieved successfully",
+    data: devices,
+    meta: { page, limit, total },
+  });
 };
 
 export const getById: RequestHandler = async (req, res) => {
@@ -59,7 +67,11 @@ export const getById: RequestHandler = async (req, res) => {
     getEntityManager(req),
     parseDeviceUuid(req.params.id, "id"),
   );
-  res.json({ data: device });
+  res.json({
+    success: true,
+    message: "Device retrieved successfully",
+    data: device,
+  });
 };
 
 export const create: RequestHandler = async (req, res) => {
@@ -68,7 +80,11 @@ export const create: RequestHandler = async (req, res) => {
       getEntityManager(req),
       parseDeviceCreate(req.body),
     );
-    res.status(201).json({ data: device });
+    res.status(201).json({
+      success: true,
+      message: "Device created successfully",
+      data: device,
+    });
   } catch (error) {
     conflict(error);
   }
@@ -81,7 +97,28 @@ export const update: RequestHandler = async (req, res) => {
       parseDeviceUuid(req.params.id, "id"),
       parseDeviceUpdate(req.body),
     );
-    res.json({ data: device });
+    res.json({
+      success: true,
+      message: "Device updated successfully",
+      data: device,
+    });
+  } catch (error) {
+    conflict(error);
+  }
+};
+
+export const replace: RequestHandler = async (req, res) => {
+  try {
+    const device = await service.updateDevice(
+      getEntityManager(req),
+      parseDeviceUuid(req.params.id, "id"),
+      parseDeviceCreate(req.body),
+    );
+    res.json({
+      success: true,
+      message: "Device updated successfully",
+      data: device,
+    });
   } catch (error) {
     conflict(error);
   }

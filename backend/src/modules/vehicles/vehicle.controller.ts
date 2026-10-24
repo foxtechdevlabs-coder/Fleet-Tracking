@@ -1,4 +1,6 @@
 // Vehicle HTTP controllers.
+
+import { UniqueConstraintViolationException } from "@mikro-orm/core";
 import type { RequestHandler } from "express";
 import { AppError } from "../../common/errors/app-error.js";
 import { getEntityManager } from "../../common/middleware/entity-manager.js";
@@ -30,15 +32,16 @@ function pagination(req: Parameters<RequestHandler>[0]) {
 
 function conflict(error: unknown): never {
   if (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "23505"
+    error instanceof UniqueConstraintViolationException ||
+    (typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "23505")
   ) {
     throw new AppError(
       409,
-      "PLATE_NUMBER_EXISTS",
-      "A vehicle with this plate number already exists",
+      "VEHICLE_IDENTIFIER_EXISTS",
+      "Vehicle identifier already exists",
     );
   }
   throw error;
@@ -53,6 +56,7 @@ export const list: RequestHandler = async (req, res) => {
   );
   res.json({
     success: true,
+    message: "Vehicles retrieved successfully",
     data: vehicles,
     meta: { page, limit, total },
   });
@@ -63,7 +67,11 @@ export const getById: RequestHandler = async (req, res) => {
     getEntityManager(req),
     parseUuid(req.params.id, "id"),
   );
-  res.json({ success: true, data: vehicle });
+  res.json({
+    success: true,
+    message: "Vehicle retrieved successfully",
+    data: vehicle,
+  });
 };
 
 export const create: RequestHandler = async (req, res) => {
@@ -72,7 +80,11 @@ export const create: RequestHandler = async (req, res) => {
       getEntityManager(req),
       parseVehicleCreate(req.body),
     );
-    res.status(201).json({ success: true, data: vehicle });
+    res.status(201).json({
+      success: true,
+      message: "Vehicle created successfully",
+      data: vehicle,
+    });
   } catch (error) {
     conflict(error);
   }
@@ -86,7 +98,11 @@ export const replace: RequestHandler = async (req, res) => {
       parseUuid(req.params.id, "id"),
       { ...input, status: input.status ?? "active" },
     );
-    res.json({ success: true, data: vehicle });
+    res.json({
+      success: true,
+      message: "Vehicle updated successfully",
+      data: vehicle,
+    });
   } catch (error) {
     conflict(error);
   }
@@ -99,7 +115,11 @@ export const update: RequestHandler = async (req, res) => {
       parseUuid(req.params.id, "id"),
       parseVehicleUpdate(req.body),
     );
-    res.json({ success: true, data: vehicle });
+    res.json({
+      success: true,
+      message: "Vehicle updated successfully",
+      data: vehicle,
+    });
   } catch (error) {
     conflict(error);
   }

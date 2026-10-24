@@ -2,6 +2,7 @@
 import type { RequestHandler } from "express";
 import { AppError } from "../../common/errors/app-error.js";
 import { getEntityManager } from "../../common/middleware/entity-manager.js";
+import { getRealtime, safely } from "../realtime/realtime.service.js";
 import { parseLoginInput } from "./auth.schema.js";
 import { authenticateAdmin, createAccessToken } from "./auth.service.js";
 import { RevokedToken } from "./revoked-token.entity.js";
@@ -48,6 +49,13 @@ export const logout: RequestHandler = async (req, res) => {
     expiresAt: req.admin.expiresAt,
     revokedAt: new Date(),
   });
+
+  // The token is revoked; also close realtime connections opened with it.
+  const realtime = getRealtime(req);
+  const { tokenId } = req.admin;
+  if (realtime) {
+    safely("logout disconnect", () => realtime.disconnectToken(tokenId));
+  }
   res.status(204).end();
 };
 

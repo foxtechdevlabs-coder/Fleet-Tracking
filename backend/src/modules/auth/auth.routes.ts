@@ -1,6 +1,7 @@
 // Admin authentication routes.
 import { Router } from "express";
 import { requireAdmin } from "../../common/middleware/auth.middleware.js";
+import { createLoginRateLimit } from "../../common/middleware/rate-limit.middleware.js";
 import { getCurrentAdmin, login, logout } from "./auth.controller.js";
 
 export const adminAuthRoutes = Router();
@@ -28,8 +29,12 @@ export const adminAuthRoutes = Router();
  *         description: Invalid request.
  *       401:
  *         description: Invalid credentials.
+ *       429:
+ *         description: >-
+ *           Too many failed login attempts (10 per IP or 20 per account in 15 minutes).
+ *           See the Retry-After header.
  */
-adminAuthRoutes.post("/login", login);
+adminAuthRoutes.post("/login", ...createLoginRateLimit(), login);
 
 /**
  * @openapi

@@ -1,15 +1,27 @@
 // Admin entity — system user / fleet manager.
-import { EntitySchema } from "@mikro-orm/core";
+import { EntitySchema, type Opt } from "@mikro-orm/core";
+import type { AdminProfile } from "./admin.types.js";
 
 export class Admin {
-  id!: string;
+  id!: string & Opt;
   email!: string;
   passwordHash!: string;
   name!: string;
-  role!: "super_admin" | "admin";
-  isActive!: boolean;
-  createdAt!: Date;
-  updatedAt!: Date;
+  role!: ("super_admin" | "admin") & Opt;
+  isActive!: boolean & Opt;
+  createdAt!: Date & Opt;
+  updatedAt!: Date & Opt;
+  toProfile(): AdminProfile {
+    return {
+      id: this.id,
+      email: this.email,
+      name: this.name,
+      role: this.role,
+      isActive: this.isActive,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
+    };
+  }
 }
 
 export const AdminSchema = new EntitySchema<Admin>({
@@ -30,6 +42,7 @@ export const AdminSchema = new EntitySchema<Admin>({
       type: "string",
       columnType: "text",
       fieldName: "password_hash",
+      hidden: true,
     },
     name: {
       type: "string",

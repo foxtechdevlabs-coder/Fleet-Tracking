@@ -16,9 +16,7 @@ export const SystemSettingSchema = new EntitySchema<SystemSetting>({
   uniques: [
     { properties: ["key", "vehicleId"], name: "uq_settings_key_vehicle" },
   ],
-  indexes: [
-    { properties: ["scope"], name: "idx_settings_scope" },
-  ],
+  indexes: [{ properties: ["scope"], name: "idx_settings_scope" }],
   properties: {
     id: {
       type: "uuid",
@@ -59,4 +57,3 @@ export const SystemSettingSchema = new EntitySchema<SystemSetting>({
 });
 
 export { SystemSetting as Setting, SystemSettingSchema as SettingSchema };
-
