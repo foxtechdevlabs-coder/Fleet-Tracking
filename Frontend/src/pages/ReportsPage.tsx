@@ -2,12 +2,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { FileBarChart, Shield } from 'lucide-react';
 import { fetchDevices, fetchReportVehicles, fetchTrackingReport, ReportApiUnavailableError } from '../services/telemetryApi';
 import type { DeviceSummary, ReportVehicleOption, TrackingReportFilter, TrackingReportRecord } from '../types/telemetry';
-import { ReportFilterCard } from '../components/reports/ReportFilterCard';
-import { ReportInitialState } from '../components/reports/ReportInitialState';
-import { ReportLoadingState } from '../components/reports/ReportLoadingState';
-import { ReportEmptyState } from '../components/reports/ReportEmptyState';
-import { ReportErrorState } from '../components/reports/ReportErrorState';
-import { ReportResultsTable } from '../components/reports/ReportResultsTable';
+import { ReportFilterCard } from '../Components/reports/ReportFilterCard';
+import { ReportInitialState } from '../Components/reports/ReportInitialState';
+import { ReportLoadingState } from '../Components/reports/ReportLoadingState';
+import { ReportEmptyState } from '../Components/reports/ReportEmptyState';
+import { ReportErrorState } from '../Components/reports/ReportErrorState';
+import { ReportResultsTable } from '../Components/reports/ReportResultsTable';
 
 type ReportQueryState = 'idle' | 'loading' | 'success' | 'empty' | 'error' | 'unavailable';
 

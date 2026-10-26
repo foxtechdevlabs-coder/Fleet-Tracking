@@ -1,6 +1,6 @@
 import React from 'react';
 import { Truck, Database } from 'lucide-react';
-import { TelemetryWatchlist } from '../components/dashboard/TelemetryWatchlist';
+import { TelemetryWatchlist } from '../Components/dashboard/TelemetryWatchlist';
 
 export const FleetPage: React.FC = () => {
   return (
