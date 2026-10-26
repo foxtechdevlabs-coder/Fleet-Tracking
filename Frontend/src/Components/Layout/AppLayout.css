@@ -1,0 +1,29 @@
+.app-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-slate-bg, #f5f7fb);
+}
+
+.app-layout-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 800px) {
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 62px 0 0;
+    border: 0;
+    padding: 0;
+    background: rgba(15, 23, 42, 0.32);
+    cursor: pointer;
+    z-index: 850;
+  }
+}
