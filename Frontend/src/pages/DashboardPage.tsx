@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { DashboardHeader } from '../components/dashboard/DashboardHeader';
-import { MetricStrip } from '../components/dashboard/MetricStrip';
-import { MapViewport } from '../components/dashboard/MapViewport';
-import { AlertsPanel } from '../components/dashboard/AlertsPanel';
-import { ActivityLogPanel } from '../components/dashboard/ActivityLogPanel';
-import { TelemetryWatchlist } from '../components/dashboard/TelemetryWatchlist';
-import { AddDeviceModal } from '../components/modals/AddDeviceModal';
+import { DashboardHeader } from '../Components/dashboard/DashboardHeader';
+import { MetricStrip } from '../Components/dashboard/MetricStrip';
+import { MapViewport } from '../Components/dashboard/MapViewport';
+import { AlertsPanel } from '../Components/dashboard/AlertsPanel';
+import { ActivityLogPanel } from '../Components/dashboard/ActivityLogPanel';
+import { TelemetryWatchlist } from '../Components/dashboard/TelemetryWatchlist';
+import { AddDeviceModal } from '../Components/modals/AddDeviceModal';
 
 export const DashboardPage: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
