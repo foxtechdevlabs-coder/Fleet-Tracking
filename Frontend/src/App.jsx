@@ -33,6 +33,7 @@ function App() {
               <Route path="settings" element={<SettingsPage />} />
             </Route>
           </Route>
+          
 {/* Check  */}
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
