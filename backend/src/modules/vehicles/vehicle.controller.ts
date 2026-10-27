@@ -14,17 +14,18 @@ import * as service from "./vehicle.service.js";
 function pagination(req: Parameters<RequestHandler>[0]) {
   const page = req.query.page === undefined ? 1 : Number(req.query.page);
   const limit = req.query.limit === undefined ? 25 : Number(req.query.limit);
-  if (
-    !Number.isInteger(page) ||
-    page < 1 ||
-    !Number.isInteger(limit) ||
-    limit < 1 ||
-    limit > 100
-  ) {
+  if (!Number.isInteger(page) || page < 1) {
     throw new AppError(
       400,
       "VALIDATION_ERROR",
-      "page must be positive and limit must be 1-100",
+      "page must be a positive integer",
+    );
+  }
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      "limit must be an integer from 1 to 100",
     );
   }
   return { page, limit, offset: (page - 1) * limit };

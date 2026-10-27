@@ -26,9 +26,9 @@ export const trackingRoutes = Router();
  *               recordedAt: { type: string, format: date-time }
  *               latitude: { type: number, minimum: -90, maximum: 90 }
  *               longitude: { type: number, minimum: -180, maximum: 180 }
- *               speed: { type: number, minimum: 0 }
- *               heading: { type: number, minimum: 0, maximum: 360 }
- *               altitude: { type: number }
+ *               speed: { type: number, minimum: 0, nullable: true, description: Omitted or null means not reported. }
+ *               heading: { type: number, minimum: 0, maximum: 360, nullable: true, description: Omitted or null means not reported. }
+ *               altitude: { type: number, nullable: true, description: Omitted or null means not reported. }
  *           example:
  *             deviceIdentifier: GPS-001
  *             recordedAt: '2026-10-07T05:20:00.000Z'

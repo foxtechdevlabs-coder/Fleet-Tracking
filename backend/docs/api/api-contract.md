@@ -31,8 +31,12 @@ include `meta`. Create responses use HTTP `201` and messages
 `{ "success": false, "message": "...", "code": "..." }`: validation is `400`
 with `VALIDATION_ERROR`, authentication is `401` with `UNAUTHORIZED`, duplicate
 Device/Vehicle identifiers are `409` with `DEVICE_IDENTIFIER_EXISTS` or
-`VEHICLE_IDENTIFIER_EXISTS`, and unexpected failures are `500` with
-`INTERNAL_SERVER_ERROR`. The health probe and `204` logout/delete responses
+`VEHICLE_IDENTIFIER_EXISTS`, request bodies over 1 MB are `413` with
+`PAYLOAD_TOO_LARGE`, and unexpected failures are `500` with
+`INTERNAL_SERVER_ERROR`. Validation messages name the field and the problem
+(for example `latitude is required`, `latitude must be a number`, or
+`status must be one of: active, inactive, maintenance`) and report the first
+invalid field only. The health probe and `204` logout/delete responses
 intentionally remain bodyless/dedicated contracts.
 
 | Method | Path | Request | Response |
@@ -144,7 +148,8 @@ correct reading after it. Delayed and out-of-order (older) readings have no
 age limit and are still stored. Latitude and
 longitude must be within [-90, 90] and [-180, 180]. Supplied speed must be
 finite and non-negative; heading must be within [0, 360]; altitude must be
-finite. Invalid input is rejected with `400 VALIDATION_ERROR` before
+finite. `speed`, `heading` and `altitude` may be omitted or sent as `null`
+when the device does not report them; both are stored as `null`. Invalid input is rejected with `400 VALIDATION_ERROR` before
 persistence. Successful requests return `201` with a standard success envelope
 and the persisted location-history record. Validation and relationship errors
 occur before either table changes.

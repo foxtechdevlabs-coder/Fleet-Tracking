@@ -12,7 +12,11 @@ const uuidPattern =
 
 function objectBody(body: unknown): Record<string, unknown> {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    throw new AppError(400, "VALIDATION_ERROR", "A JSON object is required");
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      "Request body must be a JSON object",
+    );
   }
   return body as Record<string, unknown>;
 }
@@ -35,8 +39,17 @@ function readFields(body: unknown, partial: boolean): DeviceUpdate {
   const has = (key: string) => Object.hasOwn(input, key);
 
   if (!partial || has("identifier")) {
+    if (input.identifier === undefined || input.identifier === null) {
+      throw new AppError(400, "VALIDATION_ERROR", "identifier is required");
+    }
+    if (typeof input.identifier !== "string") {
+      throw new AppError(
+        400,
+        "VALIDATION_ERROR",
+        "identifier must be a string",
+      );
+    }
     if (
-      typeof input.identifier !== "string" ||
       input.identifier.trim().length < 1 ||
       input.identifier.trim().length > 100
     ) {
@@ -69,7 +82,7 @@ function readFields(body: unknown, partial: boolean): DeviceUpdate {
       throw new AppError(
         400,
         "VALIDATION_ERROR",
-        "status is not a supported device status",
+        `status must be one of: ${statuses.join(", ")}`,
       );
     }
     output.status = input.status as DeviceStatus;

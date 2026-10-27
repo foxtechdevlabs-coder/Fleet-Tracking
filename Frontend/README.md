@@ -11,9 +11,19 @@ npm run dev
 
 ## Entry points
 
-- `src/main.jsx` — mounts the React application.
-- `src/App.jsx` — application routes and page layout.
-- `src/Components/Login/Login.jsx` — login form and client-side required-field validation.
+- `src/main.tsx` — mounts the React application.
+- `src/App.tsx` — application routes and page layout.
+- `src/Components/Login/Login.tsx` — login form and client-side required-field validation.
+- `src/Components/Map/MapViewport.tsx` — Leaflet map of the latest vehicle positions (Live Tracking page).
+- `src/Components/Reports/ReportResultsTable.tsx` — searchable, paginated report table with CSV, PDF, and Excel export.
+
+## Checks
+
+```sh
+npm run typecheck   # TypeScript
+npm test            # Vitest unit tests
+npm run build       # type check + production build
+```
 
 ## Routes
 

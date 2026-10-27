@@ -273,6 +273,25 @@ describe("authenticated device and vehicle APIs", () => {
     expect(device.body.data.identifier).toBe("GPS-001");
   });
 
+  it.each([
+    ["/api/vehicles?page=0", "page must be a positive integer"],
+    ["/api/devices?page=abc", "page must be a positive integer"],
+    ["/api/vehicles?limit=101", "limit must be an integer from 1 to 100"],
+    ["/api/devices?limit=0", "limit must be an integer from 1 to 100"],
+  ])("rejects invalid pagination in %s", async (path, message) => {
+    const db = createDatabase();
+    const response = await request(db.app)
+      .get(path)
+      .set("Authorization", db.auth);
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      success: false,
+      message,
+      code: "VALIDATION_ERROR",
+    });
+  });
+
   it("validates and creates vehicle and device records", async () => {
     const db = createDatabase();
     const headers = { Authorization: db.auth };
@@ -284,9 +303,7 @@ describe("authenticated device and vehicle APIs", () => {
     expect(missingVehicleField.status).toBe(400);
     expect(missingVehicleField.body.success).toBe(false);
     expect(missingVehicleField.body.code).toBe("VALIDATION_ERROR");
-    expect(missingVehicleField.body.message).toBe(
-      "model must be 1-100 characters",
-    );
+    expect(missingVehicleField.body.message).toBe("model is required");
 
     const emptyVehicleField = await request(db.app)
       .post("/api/vehicles")
@@ -335,7 +352,7 @@ describe("authenticated device and vehicle APIs", () => {
     expect(missingDeviceField.status).toBe(400);
     expect(missingDeviceField.body).toEqual({
       success: false,
-      message: "identifier must be 1-100 characters",
+      message: "identifier is required",
       code: "VALIDATION_ERROR",
     });
 

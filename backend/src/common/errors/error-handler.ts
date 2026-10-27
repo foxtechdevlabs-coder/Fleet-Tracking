@@ -30,6 +30,21 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     return;
   }
 
+  // express.json() rejects bodies over its limit (1 MB in app.ts) with type "entity.too.large".
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "type" in error &&
+    error.type === "entity.too.large"
+  ) {
+    res.status(413).json({
+      success: false,
+      message: "Request body must not be larger than 1 MB",
+      code: "PAYLOAD_TOO_LARGE",
+    });
+    return;
+  }
+
   if (
     typeof error === "object" &&
     error !== null &&

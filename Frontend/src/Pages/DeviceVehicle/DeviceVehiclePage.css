@@ -154,6 +154,9 @@
 }
 
 .cancel-btn {
+  border: 1px solid #d8e1ed;
+  background: #ffffff;
+  cursor: pointer;
   padding: 10px 18px;
   color: #64748b;
   font-size: 12px;

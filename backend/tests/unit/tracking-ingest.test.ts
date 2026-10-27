@@ -281,6 +281,25 @@ describe("POST /api/v1/tracking/ingest", () => {
     ).toHaveLength(1);
   });
 
+  it("stores null speed, heading and altitude as not reported", async () => {
+    const fixture = createFixture();
+    const response = await request(fixture.app)
+      .post("/api/v1/tracking/ingest")
+      .set("Authorization", fixture.auth)
+      .send({ ...validLocation, speed: null, heading: null, altitude: null });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toMatchObject({
+      speed: null,
+      heading: null,
+      altitude: null,
+    });
+    expect(fixture.livePositions[0]).toMatchObject({
+      speed: null,
+      heading: null,
+    });
+  });
+
   it("does not persist or refresh live position for a duplicate Device timestamp", async () => {
     const fixture = createFixture();
     const first = await request(fixture.app)
@@ -455,6 +474,30 @@ describe("POST /api/v1/tracking/ingest", () => {
       ).toThrow();
     },
   );
+
+  it.each([
+    [{ deviceIdentifier: undefined }, "deviceIdentifier is required"],
+    [{ deviceIdentifier: 42 }, "deviceIdentifier must be a string"],
+    [{ deviceIdentifier: "  " }, "deviceIdentifier must be 1-100 characters"],
+    [{ recordedAt: undefined }, "recordedAt is required"],
+    [
+      { recordedAt: "2026-10-07T05:20:00" },
+      "recordedAt must be an ISO 8601 timestamp with a timezone, e.g. 2026-10-07T05:20:00Z",
+    ],
+    [{ latitude: undefined }, "latitude is required"],
+    [{ latitude: null }, "latitude is required"],
+    [{ latitude: "51.5" }, "latitude must be a number"],
+    [{ latitude: 90.01 }, "latitude must be between -90 and 90"],
+    [{ longitude: -180.01 }, "longitude must be between -180 and 180"],
+    [{ speed: "32" }, "speed must be a number"],
+    [{ speed: -1 }, "speed must be at least 0"],
+    [{ heading: 361 }, "heading must be between 0 and 360"],
+    [{ altitude: "15" }, "altitude must be a number"],
+  ])("explains invalid input %j as %p", (override, message) => {
+    expect(() =>
+      parseTrackingLocation({ ...validLocation, ...override }),
+    ).toThrow(message);
+  });
 
   it.each([
     ["empty Device identifier", { ...validLocation, deviceIdentifier: "  " }],

@@ -25,8 +25,15 @@ export interface LocationReportFilters {
 
 function queryString(value: unknown, name: string): string | undefined {
   if (value === undefined) return undefined;
-  if (typeof value !== "string" || !value.trim()) {
-    throw new AppError(400, "VALIDATION_ERROR", `${name} must be a string`);
+  if (typeof value !== "string") {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      `${name} must be given only once`,
+    );
+  }
+  if (!value.trim()) {
+    throw new AppError(400, "VALIDATION_ERROR", `${name} must not be empty`);
   }
   return value.trim();
 }
