@@ -11,7 +11,6 @@ import HistoryPage from "./Pages/History/HistoryPage";
 import ReportsPage from "./Pages/Reports/ReportsPage";
 import SettingsPage from "./Pages/Settings/SettingsPage";
 import NotFoundPage from "./Pages/NotFound/NotFoundPage";
-// code
 function App() {
   return (
     <BrowserRouter>
@@ -31,7 +30,6 @@ function App() {
               <Route path="settings" element={<SettingsPage />} />
             </Route>
           </Route>
-
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </AuthProvider>
