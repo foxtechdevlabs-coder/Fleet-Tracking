@@ -11,7 +11,7 @@ import HistoryPage from "./Pages/History/HistoryPage";
 import ReportsPage from "./Pages/Reports/ReportsPage";
 import SettingsPage from "./Pages/Settings/SettingsPage";
 import NotFoundPage from "./Pages/NotFound/NotFoundPage";
-
+// code
 function App() {
   return (
     <BrowserRouter>
