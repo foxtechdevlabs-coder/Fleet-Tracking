@@ -16,7 +16,7 @@
 /* Title */
 
 .side-title {
-  font-size: 9.5px;
+  font-size: 10.5px;
   font-weight: 700;
   color: #6f7887;
   padding: 0 10px 12px;
@@ -36,14 +36,14 @@
 /* Item */
 
 .side-item {
-  height: 38px;
+  height: 40px;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 0 12px;
   box-sizing: border-box;
-  color: #4e5969;
-  font-size: 12px;
+  color: #3f4a5a;
+  font-size: 13px;
   font-weight: 500;
   border-radius: 6px;
   cursor: pointer;
@@ -89,14 +89,15 @@
 .nodes-status {
   margin-top: auto;
   background: #f3f7fc;
-  height: 44px;
-  padding: 0 12px;
+  min-height: 44px;
+  padding: 8px 12px;
+  gap: 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-radius: 6px;
   box-sizing: border-box;
-  font-size: 10px;
+  font-size: 11px;
   border: 1px solid #e2eaf4;
 }
 
@@ -104,11 +105,19 @@
   display: flex;
   align-items: center;
   gap: 7px;
+  min-width: 0;
   color: #455467;
   font-weight: 500;
 }
 
+.node-left span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .node-dot {
+  flex-shrink: 0;
   width: 7px;
   height: 7px;
   background: #0b7e82;

@@ -212,6 +212,12 @@
   gap: 7px;
 }
 
+.tracking-status-badge.tracking-status-error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
 .tracking-status-badge .pulse-dot {
   width: 6px;
   height: 6px;
@@ -452,7 +458,8 @@
 }
 
 @media (max-width: 560px) {
-  .tracking-header {
+  .tracking-header,
+  .tracking-panel-heading {
     flex-direction: column;
     gap: 12px;
   }
@@ -470,4 +477,8 @@
   .tracking-filter button {
     width: 100%;
   }
+}
+
+.tracking-map {
+  margin-bottom: 20px;
 }

@@ -10,9 +10,36 @@ const statuses: VehicleStatus[] = ["active", "inactive", "maintenance"];
 
 function objectBody(body: unknown): Record<string, unknown> {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    throw new AppError(400, "VALIDATION_ERROR", "A JSON object is required");
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      "Request body must be a JSON object",
+    );
   }
   return body as Record<string, unknown>;
+}
+
+function requiredString(
+  input: Record<string, unknown>,
+  key: string,
+  maxLength: number,
+): string {
+  const value = input[key];
+  if (value === undefined || value === null) {
+    throw new AppError(400, "VALIDATION_ERROR", `${key} is required`);
+  }
+  if (typeof value !== "string") {
+    throw new AppError(400, "VALIDATION_ERROR", `${key} must be a string`);
+  }
+  const trimmed = value.trim();
+  if (trimmed.length < 1 || trimmed.length > maxLength) {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      `${key} must be 1-${maxLength} characters`,
+    );
+  }
+  return trimmed;
 }
 
 function readFields(body: unknown, partial: boolean): VehicleUpdate {
@@ -33,39 +60,19 @@ function readFields(body: unknown, partial: boolean): VehicleUpdate {
   const has = (key: string) => Object.hasOwn(input, key);
 
   if (!partial || has("plateNumber")) {
-    if (
-      typeof input.plateNumber !== "string" ||
-      input.plateNumber.trim().length < 1 ||
-      input.plateNumber.trim().length > 20
-    ) {
-      throw new AppError(
-        400,
-        "VALIDATION_ERROR",
-        "plateNumber must be 1-20 characters",
-      );
-    }
-    output.plateNumber = input.plateNumber.trim().toUpperCase();
+    output.plateNumber = requiredString(input, "plateNumber", 20).toUpperCase();
   }
 
   for (const key of ["make", "model"] as const) {
     if (!partial || has(key)) {
-      const value = input[key];
-      if (
-        typeof value !== "string" ||
-        value.trim().length < 1 ||
-        value.trim().length > 100
-      ) {
-        throw new AppError(
-          400,
-          "VALIDATION_ERROR",
-          `${key} must be 1-100 characters`,
-        );
-      }
-      output[key] = value.trim();
+      output[key] = requiredString(input, key, 100);
     }
   }
 
   if (!partial || has("year")) {
+    if (input.year === undefined || input.year === null) {
+      throw new AppError(400, "VALIDATION_ERROR", "year is required");
+    }
     if (
       typeof input.year !== "number" ||
       !Number.isInteger(input.year) ||
@@ -86,7 +93,7 @@ function readFields(body: unknown, partial: boolean): VehicleUpdate {
       throw new AppError(
         400,
         "VALIDATION_ERROR",
-        "status is not a supported vehicle status",
+        `status must be one of: ${statuses.join(", ")}`,
       );
     }
     output.status = input.status as VehicleStatus;

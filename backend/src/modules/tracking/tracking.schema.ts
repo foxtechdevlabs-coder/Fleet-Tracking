@@ -14,17 +14,24 @@ export interface TrackingLocationInput {
 
 function objectBody(body: unknown): Record<string, unknown> {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    throw new AppError(400, "VALIDATION_ERROR", "A JSON object is required");
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      "Request body must be a JSON object",
+    );
   }
   return body as Record<string, unknown>;
 }
 
 export function parseTrackingDeviceIdentifier(value: unknown): string {
+  if (value === undefined || value === null) {
+    throw new AppError(400, "VALIDATION_ERROR", "deviceIdentifier is required");
+  }
   if (typeof value !== "string") {
     throw new AppError(
       400,
       "VALIDATION_ERROR",
-      "Device identifier must be a string",
+      "deviceIdentifier must be a string",
     );
   }
 
@@ -33,7 +40,7 @@ export function parseTrackingDeviceIdentifier(value: unknown): string {
     throw new AppError(
       400,
       "VALIDATION_ERROR",
-      "Device identifier must be 1-100 characters",
+      "deviceIdentifier must be 1-100 characters",
     );
   }
 
@@ -41,12 +48,16 @@ export function parseTrackingDeviceIdentifier(value: unknown): string {
 }
 
 export function parseTrackingTimestamp(value: unknown, field: string): Date {
+  if (value === undefined || value === null) {
+    throw new AppError(400, "VALIDATION_ERROR", `${field} is required`);
+  }
+  const invalid = new AppError(
+    400,
+    "VALIDATION_ERROR",
+    `${field} must be an ISO 8601 timestamp with a timezone, e.g. 2026-10-07T05:20:00Z`,
+  );
   if (typeof value !== "string" || !value.trim()) {
-    throw new AppError(
-      400,
-      "VALIDATION_ERROR",
-      `${field} must be a valid ISO 8601 timestamp`,
-    );
+    throw invalid;
   }
 
   const timestampPattern =
@@ -75,51 +86,61 @@ export function parseTrackingTimestamp(value: unknown, field: string): Date {
     offsetHour > 23 ||
     offsetMinute > 59
   ) {
-    throw new AppError(
-      400,
-      "VALIDATION_ERROR",
-      `${field} must be a valid ISO 8601 timestamp`,
-    );
+    throw invalid;
   }
   return new Date(timestamp);
 }
 
-function finiteNumber(
+function checkNumber(
+  value: unknown,
+  field: string,
+  min?: number,
+  max?: number,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new AppError(400, "VALIDATION_ERROR", `${field} must be a number`);
+  }
+  if (min !== undefined && max !== undefined) {
+    if (value < min || value > max) {
+      throw new AppError(
+        400,
+        "VALIDATION_ERROR",
+        `${field} must be between ${min} and ${max}`,
+      );
+    }
+  } else if (min !== undefined && value < min) {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      `${field} must be at least ${min}`,
+    );
+  }
+  return value;
+}
+
+function requiredNumber(
   input: Record<string, unknown>,
   field: string,
   min?: number,
   max?: number,
 ): number {
   const value = input[field];
-  if (
-    typeof value !== "number" ||
-    !Number.isFinite(value) ||
-    (min !== undefined && value < min) ||
-    (max !== undefined && value > max)
-  ) {
-    const range =
-      min !== undefined && max !== undefined
-        ? ` must be between ${min} and ${max}`
-        : min !== undefined
-          ? ` must be at least ${min}`
-          : "";
-    throw new AppError(
-      400,
-      "VALIDATION_ERROR",
-      `${field}${range || " must be a finite number"}`,
-    );
+  if (value === undefined || value === null) {
+    throw new AppError(400, "VALIDATION_ERROR", `${field} is required`);
   }
-  return value;
+  return checkNumber(value, field, min, max);
 }
 
-function optionalFiniteNumber(
+// Omitted and null both mean "not reported by the device" and are stored as null.
+function optionalNumber(
   input: Record<string, unknown>,
   field: string,
   min?: number,
   max?: number,
 ): number | null {
-  if (!Object.hasOwn(input, field)) return null;
-  return finiteNumber(input, field, min, max);
+  const value = input[field];
+  if (value === undefined || value === null) return null;
+  return checkNumber(value, field, min, max);
 }
 
 /**
@@ -170,11 +191,11 @@ export function parseTrackingLocation(
   return {
     deviceIdentifier,
     recordedAt: parseRecordedAt(input.recordedAt, now),
-    latitude: finiteNumber(input, "latitude", -90, 90),
-    longitude: finiteNumber(input, "longitude", -180, 180),
-    speed: optionalFiniteNumber(input, "speed", 0),
-    heading: optionalFiniteNumber(input, "heading", 0, 360),
-    altitude: optionalFiniteNumber(input, "altitude"),
+    latitude: requiredNumber(input, "latitude", -90, 90),
+    longitude: requiredNumber(input, "longitude", -180, 180),
+    speed: optionalNumber(input, "speed", 0),
+    heading: optionalNumber(input, "heading", 0, 360),
+    altitude: optionalNumber(input, "altitude"),
   };
 }
 

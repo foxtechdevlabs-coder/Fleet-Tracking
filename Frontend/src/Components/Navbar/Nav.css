@@ -29,7 +29,8 @@
 /* Logo */
 
 .nav-logo {
-  width: 245px;
+  width: 203px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -64,7 +65,7 @@
   color: #47658b;
   padding: 3px 8px;
   border-radius: 4px;
-  font-size: 8.5px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.5px;
 }
@@ -73,7 +74,7 @@
 
 .nav-breadcrumb {
   color: #6d7787;
-  font-size: 12px;
+  font-size: 13px;
   display: flex;
   gap: 6px;
   align-items: center;
@@ -104,8 +105,9 @@
   color: #176c6b;
   padding: 6px 10px;
   border-radius: 5px;
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 600;
+  white-space: nowrap;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -140,7 +142,7 @@
 
 .nav-time {
   color: #4b5667;
-  font-size: 11px;
+  font-size: 12px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -161,7 +163,7 @@
 
 .nav-time small {
   color: #8b95a3;
-  font-size: 8px;
+  font-size: 10px;
   font-family: var(--font-sans, sans-serif);
 }
 
@@ -176,15 +178,16 @@
 }
 
 .avatar {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
   border-radius: 50%;
   background: #1e3e62;
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 700;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
@@ -195,13 +198,14 @@
 }
 
 .user-info strong {
-  font-size: 11px;
+  font-size: 12.5px;
   color: #26384f;
   line-height: 1.2;
 }
 
 .user-info small {
-  font-size: 9px;
+  font-size: 11px;
+  text-transform: capitalize;
   color: #87909e;
 }
 
@@ -213,8 +217,9 @@
   color: #354357;
   padding: 6px 12px;
   border-radius: 5px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -236,17 +241,24 @@
   transform: translateX(2px);
 }
 
+@media (max-width: 1100px) {
+  .nav-logo {
+    width: 178px;
+  }
+
+  .phase-badge {
+    margin-left: 6px;
+  }
+}
+
 @media (max-width: 950px) {
-  .nav-breadcrumb {
+  .nav-breadcrumb,
+  .nav-time small {
     display: none;
   }
 }
 
-@media (max-width: 680px) {
-  .top-nav {
-    padding: 0 12px;
-  }
-
+@media (max-width: 800px) {
   .nav-logo {
     width: auto;
   }
@@ -255,10 +267,17 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    margin-right: 2px;
+    margin-right: 6px;
+  }
+}
+
+@media (max-width: 680px) {
+  .top-nav {
+    padding: 0 12px;
   }
 
   .phase-badge,
+  .nav-time,
   .connection-status,
   .user-info,
   .exit-btn span {
