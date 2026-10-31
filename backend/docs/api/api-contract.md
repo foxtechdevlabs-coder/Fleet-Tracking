@@ -17,6 +17,24 @@ The health route indicates that the HTTP process is responding. It is not a
 database readiness check. The server bootstrap separately checks PostgreSQL
 before opening the HTTP listener.
 
+## Historical tracking reports (not implemented)
+
+The Reports page requests `GET /api/reports/tracking` with required
+`dateFrom` and `dateTo` ISO timestamps and optional `vehicleId` and `deviceId`
+filters. This route is not currently mounted or implemented, and the report
+module files are placeholders. The frontend therefore reports an unavailable
+API response rather than presenting mock telemetry or an empty successful
+result.
+
+To enable report generation, the backend must query persisted tracking records
+and return either an array or `{ "success": true, "data": [...] }` using the
+record fields consumed by the frontend: `recordedAt`, `latitude`, `longitude`,
+and optional vehicle, device, speed, heading, altitude, and ignition fields.
+Distance and engine duration are not currently returned, so those summary
+metrics remain unavailable. Pagination metadata and PDF generation are also
+not implemented. Excel export is generated in the frontend from records
+actually returned by the report endpoint.
+
 ## Implemented admin, vehicle, and device endpoints
 
 Authentication, Device, and combined setup routes below are implemented under
