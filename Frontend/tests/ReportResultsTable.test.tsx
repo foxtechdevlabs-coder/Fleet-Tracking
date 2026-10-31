@@ -1,7 +1,14 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as XLSX from "xlsx";
 import { ReportResultsTable } from "../src/Components/Reports/ReportResultsTable";
 import type { LocationReportRecord } from "../src/types/fleet";
+
+const { writeFileMock } = vi.hoisted(() => ({ writeFileMock: vi.fn() }));
+vi.mock("xlsx", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("xlsx")>();
+  return { ...actual, writeFile: writeFileMock };
+});
 
 const records: LocationReportRecord[] = [
   { recordedAt: "2026-10-01T10:00:00.000Z", vehicleId: "veh-1", deviceId: "GPS-001", latitude: 13.0827, longitude: 80.2707, speed: 42.5, heading: 90, altitude: 6 },
@@ -62,5 +69,21 @@ describe("ReportResultsTable", () => {
     expect(lines[0]).toBe('"DATE / TIME (UTC)","VEHICLE","DEVICE","LATITUDE","LONGITUDE","SPEED (km/h)","HEADING","ALTITUDE (m)"');
     expect(lines[2]).toContain('"veh-2","GPS-002","-33.8688","151.2093","95","",""');
     vi.unstubAllGlobals();
+  });
+
+  it("downloads a valid .xlsx workbook with the displayed report records", async () => {
+    writeFileMock.mockClear();
+    render(<ReportResultsTable records={records} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Download Excel" }));
+
+    await waitFor(() => expect(writeFileMock).toHaveBeenCalledOnce());
+    const [workbook, filename] = writeFileMock.mock.calls[0] as [XLSX.WorkBook, string];
+    expect(filename).toMatch(/\.xlsx$/);
+
+    const bytes = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    const openedWorkbook = XLSX.read(bytes, { type: "array" });
+    expect(openedWorkbook.SheetNames).toContain("Telemetry Records");
+    expect(XLSX.utils.sheet_to_json(openedWorkbook.Sheets["Telemetry Records"])).toHaveLength(records.length);
   });
 });

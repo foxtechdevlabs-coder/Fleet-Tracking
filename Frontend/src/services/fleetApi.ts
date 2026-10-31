@@ -39,14 +39,22 @@ interface RequestOptions extends Omit<RequestInit, "headers" | "signal"> {
 }
 
 function messageForStatus(status: number, serverMessage?: string): string {
+  if (status === 404) {
+    return serverMessage
+      ? `The requested API endpoint or resource was not found (404): ${serverMessage}`
+      : "The requested API endpoint or resource was not found (404).";
+  }
   if (serverMessage) return serverMessage;
   switch (status) {
     case 400: return "The server rejected the submitted fields. Check the values and try again.";
     case 401: return "Authentication is required. Please sign in again.";
     case 403: return "You do not have permission to perform this action.";
-    case 404: return "The requested device or vehicle was not found.";
+    case 405: return "The API endpoint does not support this request method (405).";
     case 409: return "A device identifier or vehicle registration number is already in use.";
     case 500: return "The fleet service encountered an error. Please try again later.";
+    case 502:
+    case 503:
+    case 504: return `The fleet service is temporarily unavailable (${status}). Please try again later.`;
     default: return status ? `Request failed (${status}).` : "Unable to connect to the fleet service.";
   }
 }
@@ -100,6 +108,10 @@ function collectionData<T>(response: ResponseBody | null): T[] {
   return response.data as T[];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 async function listAll<T>(resource: string, session: Credentials, signal?: AbortSignal): Promise<T[]> {
   const pageSize = 100;
   const records: T[] = [];
@@ -132,6 +144,14 @@ export function updateVehicle(session: Credentials, id: string, payload: Vehicle
 }
 export function deleteDevice(session: Credentials, id: string) { return request(`/devices/${encodeURIComponent(id)}`, session, { method: "DELETE" }); }
 export function deleteVehicle(session: Credentials, id: string) { return request(`/vehicles/${encodeURIComponent(id)}`, session, { method: "DELETE" }); }
+
+export async function getSettings(session: Credentials, signal?: AbortSignal): Promise<Record<string, unknown>> {
+  const response = await request("/settings", session, { signal });
+  if (!isRecord(response?.data)) {
+    throw new FleetApiError("The settings service returned an invalid settings response.");
+  }
+  return response.data;
+}
 
 export async function getLatestLocations(session: Credentials, vehicleIds: string[] = [], signal?: AbortSignal): Promise<LatestLocation[]> {
   const normalizedIds = vehicleIds.map((id) => id.trim()).filter(Boolean);
