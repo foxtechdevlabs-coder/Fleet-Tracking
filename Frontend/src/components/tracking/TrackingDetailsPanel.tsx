@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   Activity,
   AlertCircle,
+  AlertTriangle,
   BatteryCharging,
   Calendar,
   Check,
@@ -16,18 +17,20 @@ import {
   Gauge,
   Key,
   MapPin,
+  MapPinOff,
   Navigation,
   Phone,
   Radio,
+  RefreshCw,
   Satellite,
   Signal,
   Truck,
   User,
+  WifiOff,
   X,
   Zap,
 } from 'lucide-react';
 import type { OperationalStatus, Vehicle } from '../../types/telemetry';
-import { hasValidCoordinates, parseFiniteNumber } from '../../types/telemetry';
 import { useFleet } from '../../context/FleetContext';
 
 export interface TrackingDetailsPanelProps {
@@ -40,84 +43,61 @@ export interface TrackingDetailsPanelProps {
 /**
  * Calculates compass cardinal direction from degrees (0 - 360) with both abbreviated and full cardinal names.
  */
-export function getHeadingCompass(heading?: number | null | string, isOffline?: boolean): {
-  degrees: number | null;
-  cardinal: string;
-  fullName: string;
-} {
-  const numericHeading = parseFiniteNumber(heading);
-
-  if (isOffline || numericHeading === null) {
-    return { degrees: null, cardinal: '—', fullName: '—' };
+export function getHeadingCompass(heading?: number | null): { degrees: number | null; cardinal: string } {
+  if (heading === undefined || heading === null || isNaN(heading)) {
+    return { degrees: null, cardinal: '--' };
   }
   const normalized = ((Math.round(numericHeading) % 360) + 360) % 360;
   const directions = [
-    { code: 'N', name: 'North' },
-    { code: 'NNE', name: 'North-North-East' },
-    { code: 'NE', name: 'North-East' },
-    { code: 'ENE', name: 'East-North-East' },
-    { code: 'E', name: 'East' },
-    { code: 'ESE', name: 'East-South-East' },
-    { code: 'SE', name: 'South-East' },
-    { code: 'SSE', name: 'South-South-East' },
-    { code: 'S', name: 'South' },
-    { code: 'SSW', name: 'South-South-West' },
-    { code: 'SW', name: 'South-West' },
-    { code: 'WSW', name: 'West-South-West' },
-    { code: 'W', name: 'West' },
-    { code: 'WNW', name: 'West-North-West' },
-    { code: 'NW', name: 'North-West' },
-    { code: 'NNW', name: 'North-North-West' },
+    'N', 'NNE', 'NE', 'ENE',
+    'E', 'ESE', 'SE', 'SSE',
+    'S', 'SSW', 'SW', 'WSW',
+    'W', 'WNW', 'NW', 'NNW',
   ];
   const index = Math.round(normalized / 22.5) % 16;
-  return {
-    degrees: normalized,
-    cardinal: directions[index].code,
-    fullName: directions[index].name,
-  };
+  return { degrees: normalized, cardinal: directions[index] };
 }
 
 /**
- * Formats coordinates with hemisphere notation
+ * Formats coordinates with strict validation and hemisphere notation.
+ * Returns hasCoordinates: false for NaN, null, out of range, or Null Island [0,0].
  */
 export function formatCoordinates(lat?: number | string | null, lng?: number | string | null): {
   latDisplay: string;
   lngDisplay: string;
   hasCoordinates: boolean;
 } {
-  const numericLat = parseFiniteNumber(lat);
-  const numericLng = parseFiniteNumber(lng);
+  const hasLat = lat !== undefined && lat !== null && Number.isFinite(lat);
+  const hasLng = lng !== undefined && lng !== null && Number.isFinite(lng);
 
-  if (numericLat === null || numericLng === null) {
+  if (!hasLat || !hasLng) {
     return {
-      latDisplay: '—',
-      lngDisplay: '—',
+      latDisplay: '--',
+      lngDisplay: '--',
       hasCoordinates: false,
     };
   }
 
-  const latHemisphere = numericLat >= 0 ? 'N' : 'S';
-  const lngHemisphere = numericLng >= 0 ? 'E' : 'W';
+  const latHemisphere = (lat as number) >= 0 ? 'N' : 'S';
+  const lngHemisphere = (lng as number) >= 0 ? 'E' : 'W';
 
   return {
-    latDisplay: `${Math.abs(numericLat).toFixed(4)}° ${latHemisphere}`,
-    lngDisplay: `${Math.abs(numericLng).toFixed(4)}° ${lngHemisphere}`,
+    latDisplay: `${Math.abs(lat as number).toFixed(6)}° ${latHemisphere}`,
+    lngDisplay: `${Math.abs(lng as number).toFixed(6)}° ${lngHemisphere}`,
     hasCoordinates: true,
   };
 }
 
 /**
- * Formats speed in km/h
+ * Formats speed in km/h with validity check
  */
 export function formatSpeed(speed?: number | string | null, isOffline?: boolean): {
   speedDisplay: string;
   isMoving: boolean;
   numericSpeed: number;
 } {
-  const numericSpeed = parseFiniteNumber(speed);
-
-  if (isOffline || numericSpeed === null) {
-    return { speedDisplay: '—', isMoving: false, numericSpeed: 0 };
+  if (speed === undefined || speed === null || isNaN(speed)) {
+    return { speedDisplay: '-- km/h', isMoving: false, numericSpeed: 0 };
   }
 
   const rounded = Math.max(0, Math.round(numericSpeed));
@@ -131,13 +111,13 @@ export function formatSpeed(speed?: number | string | null, isOffline?: boolean)
 /**
  * Formats relative and localized absolute timestamp from real ISO date strings with staleness detection.
  */
-export function formatTelemetryTime(dateStr?: string): { relative: string; absolute: string; isStale: boolean } {
+export function formatTelemetryTime(dateStr?: string): { relative: string; absolute: string } {
   if (!dateStr) {
     return { relative: 'No Handshake', absolute: '—', isStale: false };
   }
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) {
-    return { relative: 'No Handshake', absolute: '—', isStale: false };
+    return { relative: 'Awaiting timestamp', absolute: '--' };
   }
   const now = Date.now();
   const diffSec = Math.floor((now - date.getTime()) / 1000);
@@ -188,8 +168,6 @@ export function getStatusStyle(status?: OperationalStatus) {
       return { label: 'Stationary', badgeClass: 'stopped', dotClass: 'stopped' };
     case 'MAINTENANCE':
       return { label: 'Maintenance', badgeClass: 'maintenance', dotClass: 'maintenance' };
-    case 'UNKNOWN':
-      return { label: 'Status Unavailable', badgeClass: 'unknown', dotClass: 'unknown' };
     case 'OFFLINE':
       return { label: 'Offline', badgeClass: 'offline', dotClass: 'offline' };
     default:
@@ -203,8 +181,19 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
   onCenterMap,
   className = '',
 }) => {
-  const { vehicles, selectedVehicleId } = useFleet();
+  const {
+    vehicles,
+    selectedVehicleId,
+    isLoading,
+    isRefreshing,
+    trackingState,
+    apiError,
+    refreshTelemetry,
+    retryTracking,
+  } = useFleet();
+
   const [copiedCoords, setCopiedCoords] = useState(false);
+  const [copiedLastKnown, setCopiedLastKnown] = useState(false);
   const [copiedDeviceId, setCopiedDeviceId] = useState(false);
 
   // Resolve target vehicle: explicit prop takes priority over context selection.
@@ -223,10 +212,48 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
       <aside className={`tracking-details-panel empty-state-panel ${className}`} aria-label="Tracking Details">
         <div className="tracking-details-empty">
           <div className="empty-icon-wrap">
-            <Radio size={32} color="#94a3b8" />
+            {isLoading || trackingState === 'retrying' ? (
+              <Radio size={32} color="#0284c7" className="spin-anim" />
+            ) : apiError ? (
+              <WifiOff size={32} color="#ef4444" />
+            ) : (
+              <Radio size={32} color="#94a3b8" />
+            )}
           </div>
-          <h3>No Vehicle Selected</h3>
-          <p>Select an asset from the fleet list or map to view real-time tracking details, coordinates, and telemetry.</p>
+
+          <h3>
+            {isLoading
+              ? 'Loading tracking data'
+              : trackingState === 'retrying'
+                ? 'Retrying connection...'
+                : apiError
+                  ? `Tracking service error (${apiError.status || 'Offline'})`
+                  : 'No vehicle selected'}
+          </h3>
+
+          <p>
+            {apiError
+              ? apiError.friendlyMessage
+              : isLoading
+                ? 'Retrieving vehicle telemetry records from the cluster.'
+                : 'Select an asset from the fleet matrix or map to view live telemetry.'}
+          </p>
+
+          {apiError?.actionableAdvice && (
+            <p className="error-actionable-hint">{apiError.actionableAdvice}</p>
+          )}
+
+          {apiError && apiError.canRetry && (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => void retryTracking()}
+              disabled={trackingState === 'retrying'}
+            >
+              <RefreshCw size={14} className={trackingState === 'retrying' ? 'spin-anim' : ''} />
+              <span>{trackingState === 'retrying' ? 'Retrying...' : 'Retry Connection'}</span>
+            </button>
+          )}
         </div>
       </aside>
     );
@@ -239,21 +266,26 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
   const heading = parseFiniteNumber(telemetry?.heading);
   const isOffline = activeVehicle.operationalStatus === 'OFFLINE';
   const statusInfo = getStatusStyle(activeVehicle.operationalStatus);
-  const speedInfo = formatSpeed(speed ?? undefined, isOffline);
-  const hasSpeed = speed !== null;
-  const headingInfo = getHeadingCompass(heading ?? undefined, isOffline);
-  const coordInfo = hasValidCoordinates(latitude, longitude)
-    ? formatCoordinates(latitude, longitude)
-    : formatCoordinates(null, null);
-  const lastUpdated = formatTelemetryTime(telemetry?.recordedAt || telemetry?.ingestedAt);
+  const speedInfo = formatSpeed(telemetry?.speed);
+  const headingInfo = getHeadingCompass(telemetry?.heading);
+  const coordInfo = formatCoordinates(telemetry?.latitude, telemetry?.longitude);
+  const lastUpdated = formatTelemetryTime(telemetry?.recordedAt || telemetry?.ingestedAt || activeVehicle.updatedAt);
   const hasTelemetry = coordInfo.hasCoordinates;
 
   const handleCopyCoords = () => {
-    if (!hasTelemetry || latitude === null || longitude === null) return;
-    const text = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+    if (!hasTelemetry || telemetry?.latitude === undefined || telemetry?.longitude === undefined) return;
+    const text = `${telemetry.latitude.toFixed(6)}, ${telemetry.longitude.toFixed(6)}`;
     navigator.clipboard?.writeText(text);
     setCopiedCoords(true);
     setTimeout(() => setCopiedCoords(false), 2000);
+  };
+
+  const handleCopyLastKnownCoords = () => {
+    if (!hasLastKnown || !activeVehicle.lastKnownLocation) return;
+    const text = `${activeVehicle.lastKnownLocation.latitude.toFixed(6)}, ${activeVehicle.lastKnownLocation.longitude.toFixed(6)}`;
+    navigator.clipboard?.writeText(text);
+    setCopiedLastKnown(true);
+    setTimeout(() => setCopiedLastKnown(false), 2000);
   };
 
   const handleCopyDeviceId = () => {
@@ -272,7 +304,7 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
 
   return (
     <aside className={`tracking-details-panel ${className}`} aria-label="Vehicle Tracking Details">
-      {/* 1. Header Bar: Identity & Status & Center Map */}
+      {/* 1. Header Bar: Identity & Status */}
       <div className="tracking-details-header">
         <div className="details-header-meta">
           <div className="vehicle-avatar">
@@ -280,31 +312,13 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
           </div>
           <div className="vehicle-title-group">
             <div className="vehicle-id-row">
-              <span className="vehicle-id-badge">{activeVehicle.id || '—'}</span>
-              <span className="plate-badge">{activeVehicle.plateNumber || '—'}</span>
-            </div>
-            <div className="vehicle-subtitle-row" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.74rem', color: '#64748b' }}>
-              <span className="vehicle-make-model" title={modelTag}>{modelTag}</span>
-              <span>•</span>
-              <span title="Carrier Identifier">CID: {carrierId}</span>
+              <span className="vehicle-id-badge">{activeVehicle.id}</span>
+              <span className="plate-badge">{activeVehicle.plateNumber}</span>
             </div>
           </div>
         </div>
 
         <div className="details-header-actions">
-          {onCenterMap && (
-            <button
-              type="button"
-              className="center-map-btn"
-              onClick={onCenterMap}
-              title="Center map on this vehicle"
-              aria-label="Center map on selected vehicle"
-            >
-              <Crosshair size={13} />
-              <span>Center Map</span>
-            </button>
-          )}
-
           <span className={`status-pill ${statusInfo.badgeClass}`}>
             <span className={`status-dot ${statusInfo.dotClass}`} />
             {statusInfo.label}
@@ -336,25 +350,11 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
       </div>
 
       {/* 2. Stream Status Ribbon */}
-      <div className={`telemetry-stream-banner ${isOffline ? 'offline' : hasTelemetry ? 'active' : 'awaiting'}`}>
+      <div className={`telemetry-stream-banner ${hasTelemetry ? 'active' : 'awaiting'}`}>
         <div className="stream-indicator">
-          {isOffline ? (
-            <AlertCircle size={14} color="#ef4444" />
-          ) : hasTelemetry ? (
-            <CheckCircle2 size={14} />
-          ) : (
-            <AlertCircle size={14} />
-          )}
+          {hasTelemetry ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
           <span>
-            {isOffline
-              ? 'Device Offline'
-              : hasTelemetry
-              ? (lastUpdated.absolute === '—'
-                ? 'Location Timestamp Unavailable'
-                : lastUpdated.isStale
-                  ? 'Stale Location'
-                  : 'Telemetry Snapshot Available')
-              : 'Awaiting GPS Fix — Signal Pending'}
+            {hasTelemetry ? 'Live GNSS Fix Acquired' : 'Awaiting GPS Fix — Signal Pending'}
           </span>
         </div>
         <div className="stream-timestamp">
@@ -362,18 +362,42 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
             {isOffline
               ? (hasTelemetry ? `Last Fix: ${lastUpdated.relative}` : 'No Handshake')
               : hasTelemetry
-              ? (telemetry?.gnssFixType || (typeof telemetry?.satelliteCount === 'number' ? `GNSS: ${telemetry.satelliteCount} satellites` : 'GNSS details unavailable'))
-              : 'Awaiting Signal'}
+                ? (telemetry?.gnssFixType || (typeof telemetry?.satelliteCount === 'number' ? `GNSS: ${telemetry.satelliteCount} satellites` : 'GNSS details unavailable'))
+                : 'Awaiting Signal'}
           </span>
         </div>
       </div>
 
+      {/* API Error Alert Bar (if operational error occurred during stream) */}
+      {apiError && (
+        <div className="telemetry-error-alert" role="alert">
+          <div className="error-alert-content">
+            <AlertCircle size={15} color="#ef4444" />
+            <div className="error-alert-text">
+              <strong>{apiError.status ? `HTTP ${apiError.status}: ` : ''}{apiError.friendlyMessage}</strong>
+              {apiError.actionableAdvice && <span>{apiError.actionableAdvice}</span>}
+            </div>
+          </div>
+          {apiError.canRetry && (
+            <button
+              type="button"
+              className="btn-retry-compact"
+              onClick={() => void retryTracking()}
+              disabled={trackingState === 'retrying'}
+            >
+              <RefreshCw size={12} className={trackingState === 'retrying' ? 'spin-anim' : ''} />
+              <span>Retry</span>
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="tracking-details-scrollable">
-        {/* 3. Primary 5 Telemetry Metrics Strip */}
-        <section className="details-section" aria-label="5 Telemetry Metrics Strip">
+        {/* 3. Primary Telemetry Metrics Grid (Speed, Heading, Coordinates, Last Updated) */}
+        <section className="details-section" aria-label="Live Telemetry">
           <div className="section-title-row">
             <Activity size={14} />
-            <h4>Real-time Telemetry Metrics</h4>
+            <h4>Live Coordinates &amp; Dynamics</h4>
           </div>
 
           <div className="telemetry-hud-grid">
@@ -393,7 +417,7 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
                 />
               </div>
               <span className="metric-subtext">
-                {isOffline ? 'Device offline' : !hasSpeed ? 'Awaiting speed telemetry' : speedInfo.isMoving ? 'In transit' : 'Stationary'}
+                {speedInfo.isMoving ? 'In Transit' : 'Stationary'}
               </span>
             </div>
 
@@ -420,18 +444,18 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
                 {isOffline
                   ? 'Signal Stale'
                   : headingInfo.degrees !== null
-                  ? `Heading: ${headingInfo.fullName}`
-                  : 'Awaiting bearing'}
+                    ? `Heading: ${headingInfo.fullName}`
+                    : 'Awaiting bearing'}
               </span>
             </div>
 
-            {/* Metric 3: GNSS Coordinates */}
+            {/* Latitude & Longitude Fields */}
             <div className="hud-metric-card full-width">
               <div className="metric-header">
                 <span className="metric-title">3. GNSS COORDINATES &amp; FIX</span>
                 <div className="coords-header-actions">
                   <MapPin size={13} color="#0284c7" />
-                  {hasTelemetry && (
+                  {hasLiveCoordinates && (
                     <button
                       type="button"
                       className="copy-btn"
@@ -445,30 +469,81 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
                   )}
                 </div>
               </div>
-              <div className="coords-dual-display">
-                <div className="coord-item">
-                  <span className="coord-label">LAT</span>
-                  <span className="coord-value">{coordInfo.latDisplay}</span>
+
+              {hasLiveCoordinates ? (
+                <div className="coords-dual-display">
+                  <div className="coord-item">
+                    <span className="coord-label">LAT</span>
+                    <span className="coord-value">{coordInfo.latDisplay}</span>
+                  </div>
+                  <div className="coord-separator">•</div>
+                  <div className="coord-item">
+                    <span className="coord-label">LNG</span>
+                    <span className="coord-value">{coordInfo.lngDisplay}</span>
+                  </div>
                 </div>
-                <div className="coord-separator">•</div>
-                <div className="coord-item">
-                  <span className="coord-label">LNG</span>
-                  <span className="coord-value">{coordInfo.lngDisplay}</span>
+              ) : (
+                <div className="location-unavailable-card">
+                  <div className="unavailable-pill-badge">
+                    <MapPinOff size={13} />
+                    <span>Location Unavailable</span>
+                  </div>
+                  <p className="unavailable-explanation">
+                    No active satellite lock. Synthetic coordinates are prohibited.
+                  </p>
                 </div>
-              </div>
+              )}
+
+              {/* Explicit Last Known Location section if current coordinates unavailable */}
+              {isLocationUnavailable && hasLastKnown && activeVehicle.lastKnownLocation && (
+                <div className="last-known-location-box">
+                  <div className="last-known-box-header">
+                    <span className="last-known-title">
+                      <Clock size={11} />
+                      LAST KNOWN VALID LOCATION
+                    </span>
+                    <button
+                      type="button"
+                      className="copy-btn"
+                      onClick={handleCopyLastKnownCoords}
+                      title="Copy last known coordinates"
+                      aria-label="Copy last known coordinates"
+                    >
+                      {copiedLastKnown ? <Check size={11} color="#10b981" /> : <Copy size={11} />}
+                      <span>{copiedLastKnown ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                  <div className="coords-dual-display last-known-display">
+                    <div className="coord-item">
+                      <span className="coord-label">LAT</span>
+                      <span className="coord-value">
+                        {formatCoordinates(activeVehicle.lastKnownLocation.latitude, activeVehicle.lastKnownLocation.longitude).latDisplay}
+                      </span>
+                    </div>
+                    <div className="coord-separator">•</div>
+                    <div className="coord-item">
+                      <span className="coord-label">LNG</span>
+                      <span className="coord-value">
+                        {formatCoordinates(activeVehicle.lastKnownLocation.latitude, activeVehicle.lastKnownLocation.longitude).lngDisplay}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="last-known-timestamp">
+                    Recorded {formatTelemetryTime(activeVehicle.lastKnownLocation.recordedAt).relative} (
+                    {new Date(activeVehicle.lastKnownLocation.recordedAt).toLocaleString()})
+                  </span>
+                </div>
+              )}
+
               <span className="metric-subtext">
-                {isOffline
-                  ? (hasTelemetry ? `Last known fix (${lastUpdated.relative})` : 'Location Unavailable / Awaiting GPS Fix')
-                  : (hasTelemetry
-                    ? (telemetry?.gnssFixType || (telemetry?.satelliteCount ? `3D DGPS / ${telemetry.satelliteCount} Sats Fix` : '3D DGPS / Sats'))
-                    : 'Awaiting GPS Fix')}
+                {hasTelemetry ? 'WGS84 High Precision Fix' : 'No GPS coordinate packet received'}
               </span>
             </div>
 
             {/* Metric 4: Odometer & Run */}
             <div className="hud-metric-card">
               <div className="metric-header">
-                <span className="metric-title">4. ODOMETER &amp; RUN</span>
+                <span className="metric-title">LAST TELEMETRY UPDATE</span>
                 <Clock size={13} color="#0284c7" />
               </div>
               <div className="metric-value-wrap">
@@ -482,8 +557,8 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
                 {isOffline
                   ? 'Trip: —'
                   : telemetry?.todayTripKm !== undefined && telemetry.todayTripKm !== null && Number.isFinite(telemetry.todayTripKm)
-                  ? `Trip: ${telemetry.todayTripKm.toLocaleString()} km today`
-                  : 'Trip: —'}
+                    ? `Trip: ${telemetry.todayTripKm.toLocaleString()} km today`
+                    : 'Trip: —'}
               </span>
             </div>
 
@@ -499,7 +574,11 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
                 </span>
               </div>
               <span className="metric-subtext">
-                {isOffline ? 'No connection' : (telemetry?.csqDbm || '—')}
+                {telemetry?.recordedAt
+                  ? `Recorded at: ${new Date(telemetry.recordedAt).toLocaleString()}`
+                  : telemetry?.ingestedAt
+                    ? `Ingested at: ${new Date(telemetry.ingestedAt).toLocaleString()}`
+                    : 'Pending first telemetry ingestion'}
               </span>
             </div>
           </div>
@@ -518,7 +597,7 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
               <span className="kv-val">
                 <span className="driver-display">
                   <User size={13} />
-                  <span>{activeVehicle.driverName || '—'}</span>
+                  <span>{activeVehicle.driverName || 'Driver Unassigned'}</span>
                 </span>
               </span>
             </div>
@@ -541,7 +620,7 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
                     <span>{activeVehicle.driverPhone}</span>
                   </a>
                 ) : (
-                  <span className="text-muted-fallback">—</span>
+                  <span className="text-muted-fallback">No phone on record</span>
                 )}
               </span>
             </div>
@@ -675,8 +754,18 @@ export const TrackingDetailsPanel: React.FC<TrackingDetailsPanelProps> = ({
       <div className="tracking-details-footer">
         <div className="protocol-indicator">
           <Zap size={12} color="#0284c7" />
-          <span>Telemetry Snapshot • Backend data only</span>
+          <span>Real-time API Bound • Zero Mock Values</span>
         </div>
+        <button
+          type="button"
+          className="refresh-details-btn"
+          onClick={() => void refreshTelemetry()}
+          disabled={isRefreshing}
+          title="Refresh telemetry"
+        >
+          <RefreshCw size={12} className={isRefreshing ? 'spin-anim' : ''} />
+          <span>Refresh</span>
+        </button>
       </div>
     </aside>
   );

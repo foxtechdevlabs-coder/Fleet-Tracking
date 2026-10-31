@@ -3,35 +3,47 @@
 
 export type OperationalStatus = 'MOVING' | 'STOPPED' | 'OFFLINE' | 'MAINTENANCE' | 'UNKNOWN';
 
-export function parseFiniteNumber(value: unknown): number | null {
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : null;
-  }
-
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed || trimmed === 'null' || trimmed === 'undefined') {
-      return null;
-    }
-
-    const normalized = trimmed.replace(/,/g, '');
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  return null;
-}
-
-export function hasValidCoordinates(latitude: unknown, longitude: unknown): boolean {
-  const lat = parseFiniteNumber(latitude);
-  const lng = parseFiniteNumber(longitude);
-
-  return lat !== null && lng !== null && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
-}
-
 export type VehicleStatus = 'active' | 'inactive' | 'maintenance';
 
 export type AlertSeverity = 'CRITICAL' | 'WARNING' | 'INFO';
+
+/**
+ * Tracking freshness state based on last telemetry ping timestamp
+ */
+export type TrackingFreshness = 'live' | 'stale' | 'offline' | 'unknown';
+
+/**
+ * Tracking API state machine states
+ */
+export type ApiState = 'idle' | 'loading' | 'success' | 'error' | 'retrying';
+
+export interface FreshnessConfig {
+  staleThresholdMs: number; // e.g. 5 minutes (300,000 ms)
+  offlineThresholdMs: number; // e.g. 15 minutes (900,000 ms)
+}
+
+export const DEFAULT_FRESHNESS_CONFIG: FreshnessConfig = {
+  staleThresholdMs: 5 * 60 * 1000, // 5 minutes
+  offlineThresholdMs: 15 * 60 * 1000, // 15 minutes
+};
+
+export interface LastKnownLocation {
+  latitude: number;
+  longitude: number;
+  recordedAt: string;
+  speed?: number;
+  heading?: number;
+}
+
+export interface ApiErrorDetails {
+  status?: number;
+  statusText?: string;
+  message: string;
+  friendlyMessage: string;
+  actionableAdvice?: string;
+  canRetry: boolean;
+  timestamp: string;
+}
 
 export interface TelemetryData {
   latitude: number;
@@ -71,6 +83,9 @@ export interface Vehicle {
   status: VehicleStatus;
   operationalStatus: OperationalStatus;
   telemetry?: TelemetryData;
+  lastKnownLocation?: LastKnownLocation;
+  freshness?: TrackingFreshness;
+  locationUnavailable?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -117,48 +132,104 @@ export interface TableColumnConfig {
 
 export type MapViewMode = 'street' | 'satellite' | 'traffic';
 
-// Tracking Report interfaces
-export interface TrackingReportFilter {
-  vehicleId?: string;
-  deviceId?: string;
-  dateFrom: string; // ISO string or YYYY-MM-DDTHH:mm
-  dateTo: string;   // ISO string or YYYY-MM-DDTHH:mm
+/**
+ * Checks whether coordinates represent a genuine, physically valid WGS84 position.
+ * Rejects null, undefined, NaN, non-finite values, out-of-range degrees,
+ * and synthetic default [0, 0] (Null Island) values.
+ */
+export function isValidCoordinate(lat?: number | null, lng?: number | null): boolean {
+  if (lat === null || lat === undefined || lng === null || lng === undefined) {
+    return false;
+  }
+  if (typeof lat !== 'number' || typeof lng !== 'number') {
+    return false;
+  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Number.isNaN(lat) || Number.isNaN(lng)) {
+    return false;
+  }
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return false;
+  }
+  // Disallow exact [0, 0] to eliminate synthetic mock/fallback plots
+  if (lat === 0 && lng === 0) {
+    return false;
+  }
+  return true;
 }
 
-export interface ReportVehicleOption {
-  id: string;
-  plateNumber: string;
-  make: string;
-  model: string;
-}
+/**
+ * Determines tracking freshness category and metadata given a timestamp.
+ */
+export function calculateFreshness(
+  timestamp?: string | number | Date | null,
+  config: FreshnessConfig = DEFAULT_FRESHNESS_CONFIG
+): {
+  freshness: TrackingFreshness;
+  label: string;
+  badgeClass: string;
+  dotClass: string;
+  subtext: string;
+  elapsedMs: number | null;
+} {
+  if (!timestamp) {
+    return {
+      freshness: 'unknown',
+      label: 'No Data',
+      badgeClass: 'freshness-unknown',
+      dotClass: 'dot-unknown',
+      subtext: 'Awaiting telemetry fix',
+      elapsedMs: null,
+    };
+  }
 
-export interface TrackingReportRecord {
-  id?: string;
-  recordedAt: string; // ISO timestamp
-  vehicleId?: string;
-  plateNumber?: string;
-  vehicleMake?: string;
-  vehicleModel?: string;
-  deviceId?: string;
-  latitude?: number | null;
-  longitude?: number | null;
-  speed?: number | null; // km/h
-  heading?: number | null; // degrees (0-360)
-  altitude?: number | null; // meters
-  status?: string;
-  ignition?: boolean;
-}
+  const date = new Date(timestamp);
+  const time = date.getTime();
+  if (Number.isNaN(time)) {
+    return {
+      freshness: 'unknown',
+      label: 'Invalid Time',
+      badgeClass: 'freshness-unknown',
+      dotClass: 'dot-unknown',
+      subtext: 'Invalid timestamp',
+      elapsedMs: null,
+    };
+  }
 
-export interface TrackingReportResponse {
-  success?: boolean;
-  data: TrackingReportRecord[];
-  total?: number;
-  error?: string;
-}
+  const now = Date.now();
+  const elapsedMs = Math.max(0, now - time);
 
-export interface DeviceSummary {
-  id: string;
-  identifier: string;
-  vehicleId?: string | null;
-  status: 'active' | 'inactive' | 'unassigned' | string;
+  if (elapsedMs < config.staleThresholdMs) {
+    return {
+      freshness: 'live',
+      label: 'Live (Active)',
+      badgeClass: 'freshness-live',
+      dotClass: 'dot-live',
+      subtext: 'Streaming real-time coordinates',
+      elapsedMs,
+    };
+  }
+
+  if (elapsedMs < config.offlineThresholdMs) {
+    const mins = Math.max(1, Math.floor(elapsedMs / (60 * 1000)));
+    return {
+      freshness: 'stale',
+      label: 'Stale',
+      badgeClass: 'freshness-stale',
+      dotClass: 'dot-stale',
+      subtext: `Telemetry delayed by ${mins}m`,
+      elapsedMs,
+    };
+  }
+
+  const mins = Math.floor(elapsedMs / (60 * 1000));
+  const hrs = Math.floor(mins / 60);
+  const timeDisplay = hrs > 0 ? `${hrs}h+` : `${mins}m+`;
+  return {
+    freshness: 'offline',
+    label: 'Offline',
+    badgeClass: 'freshness-offline',
+    dotClass: 'dot-offline',
+    subtext: `Telemetry offline for ${timeDisplay}`,
+    elapsedMs,
+  };
 }

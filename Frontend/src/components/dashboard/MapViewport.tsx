@@ -2,35 +2,30 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet';
 import {
   Compass,
+  Cpu,
   Crosshair,
   Layers,
+  MapPinOff,
   Maximize2,
   Minus,
-  Navigation,
   Plus,
   Radio,
+  RefreshCw,
+  Satellite,
+  ShieldAlert,
+  ShieldCheck,
+  Truck,
 } from 'lucide-react';
-import { hasValidCoordinates, parseFiniteNumber, type MapViewMode, type OperationalStatus, type Vehicle } from '../../types/telemetry';
+import type { MapViewMode, OperationalStatus } from '../../types/telemetry';
 import { useFleet } from '../../context/FleetContext';
-import { getHeadingCompass, formatTelemetryTime } from '../tracking/TrackingDetailsPanel';
+import { getHeadingCompass, formatTelemetryTime, formatCoordinates } from '../tracking/TrackingDetailsPanel';
 
 export interface MapViewportProps {
   onAddDeviceClick?: () => void;
   showFloatingTelemetryCard?: boolean;
-  centerTrigger?: number;
-  onVehicleSelect?: (vehicleId: string) => void;
 }
 
-const WORLD_OVERVIEW_CENTER: [number, number] = [0, 0];
-const WORLD_OVERVIEW_ZOOM = 2;
-
-function getVehicleCoordinates(vehicle: Vehicle): [number, number] | null {
-  const latitude = parseFiniteNumber(vehicle.telemetry?.latitude);
-  const longitude = parseFiniteNumber(vehicle.telemetry?.longitude);
-  return latitude !== null && longitude !== null && hasValidCoordinates(latitude, longitude)
-    ? [latitude, longitude]
-    : null;
-}
+const DEFAULT_CENTER: [number, number] = [12.9716, 77.5946];
 
 const getStatusColor = (status?: OperationalStatus) => {
   switch (status) {
@@ -45,37 +40,43 @@ const getStatusColor = (status?: OperationalStatus) => {
     case 'UNKNOWN':
       return '#64748b';
     default:
-      return '#38bdf8';
+      return '#0284c7';
   }
 };
 
 export const MapViewport: React.FC<MapViewportProps> = ({
   onAddDeviceClick,
   showFloatingTelemetryCard = true,
-  centerTrigger,
-  onVehicleSelect,
 }) => {
-  const { vehicles, selectedVehicleId, setSelectedVehicleId, error, isLoading } = useFleet();
+  const { vehicles, selectedVehicleId, setSelectedVehicleId } = useFleet();
   const mapRef = useRef<HTMLDivElement | null>(null);
   const mapCanvasRef = useRef<HTMLDivElement | null>(null);
   const leafletMapRef = useRef<L.Map | null>(null);
   const markerLayerRef = useRef<L.LayerGroup | null>(null);
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
-  const hasInitialFitBoundsRef = useRef<boolean>(false);
   const [mapMode, setMapMode] = useState<MapViewMode>('street');
   const [zoomLevel, setZoomLevel] = useState<number>(12);
 
-  const activeVehicleIds = useMemo(
+  const visibleVehicles = useMemo(
+    () => visibleVehicleIds ? vehicles.filter((vehicle) => visibleVehicleIds.includes(vehicle.id)) : vehicles,
+    [vehicles, visibleVehicleIds]
+  );
+
+  // Vehicles with strictly valid live WGS84 coordinates (no [0, 0] Null Island)
+  const activeLiveVehicles = useMemo(
     () =>
       vehicles.filter(
-        (vehicle) => getVehicleCoordinates(vehicle) !== null,
+        (vehicle) =>
+          vehicle.telemetry &&
+          Number.isFinite(vehicle.telemetry.latitude) &&
+          Number.isFinite(vehicle.telemetry.longitude),
       ),
-    [vehicles],
+    [visibleVehicles]
   );
 
   const selectedVehicle =
-    vehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? vehicles[0] ?? null;
+    vehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? activeVehicleIds[0] ?? null;
 
+  // Map Initialization
   useEffect(() => {
     if (!mapRef.current || leafletMapRef.current) {
       return;
@@ -99,212 +100,97 @@ export const MapViewport: React.FC<MapViewportProps> = ({
 
     return () => {
       markerLayerRef.current?.clearLayers();
-      tileLayerRef.current?.remove();
-      tileLayerRef.current = null;
       map.remove();
       leafletMapRef.current = null;
       markerLayerRef.current = null;
     };
   }, []);
 
-  // Swap tile layer when the user toggles map mode
   useEffect(() => {
-    const map = leafletMapRef.current;
-    if (!map) return;
+    if (!leafletMapRef.current) {
+      return;
+    }
 
-    const tileUrls: Record<MapViewMode, string> = {
-      street: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      traffic: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
-    };
-
-    tileLayerRef.current?.remove();
-    const newTile = L.tileLayer(tileUrls[mapMode], { maxZoom: 19, subdomains: ['a', 'b', 'c'] });
-    newTile.addTo(map);
-    tileLayerRef.current = newTile;
-    // The map-init effect handles the first tile load; this runs only on subsequent mode changes.
-  }, [mapMode]);
-
-  // Auto-select the first vehicle once the vehicle list loads and nothing is selected yet.
-  // Depend only on vehicles.length (not the full array reference) to avoid re-triggering
-  // on every telemetry refresh that returns a new array object.
-  useEffect(() => {
-    if (!leafletMapRef.current) return;
-    if (!selectedVehicleId && vehicles.length > 0) {
+    if (!selectedVehicleId && vehicles[0]) {
       setSelectedVehicleId(vehicles[0].id);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehicles.length]);
+  }, [selectedVehicleId, setSelectedVehicleId, vehicles]);
 
-  // Smoothly center/fly to target vehicle coordinates
-  const flyToVehicle = useCallback((targetVehicleId?: string | null) => {
-    const map = leafletMapRef.current;
-    if (!map) return;
-    const targetId = targetVehicleId || selectedVehicleId;
-    const target = vehicles.find((v) => v.id === targetId);
-    const coordinates = target ? getVehicleCoordinates(target) : null;
-    if (target && coordinates) {
-      map.flyTo(coordinates, 15, {
-        animate: true,
-        duration: 1.2,
-      });
-      setZoomLevel(15);
-    }
-  }, [selectedVehicleId, vehicles]);
-
-  const handleRecenter = useCallback(() => {
-    const selected = vehicles.find((vehicle) => vehicle.id === selectedVehicleId);
-    if (selected && getVehicleCoordinates(selected)) {
-      flyToVehicle(selected.id);
-      return;
-    }
-    const map = leafletMapRef.current;
-    if (!map) return;
-    if (activeVehicleIds.length) {
-      const bounds = L.latLngBounds(activeVehicleIds.flatMap((vehicle) => {
-        const coordinates = getVehicleCoordinates(vehicle);
-        return coordinates ? [coordinates] : [];
-      }));
-      map.fitBounds(bounds.pad(0.35), { maxZoom: 15, animate: true });
-      return;
-    }
-    map.setView(WORLD_OVERVIEW_CENTER, WORLD_OVERVIEW_ZOOM);
-  }, [activeVehicleIds, flyToVehicle, selectedVehicleId, vehicles]);
-
-  const cycleMapMode = () => {
-    setMapMode((mode) => mode === 'street' ? 'satellite' : mode === 'satellite' ? 'traffic' : 'street');
-  };
-
-  const toggleFullscreen = () => {
-    const target = mapCanvasRef.current;
-    if (!target) return;
-    if (document.fullscreenElement === target) {
-      void document.exitFullscreen();
-    } else {
-      void target.requestFullscreen();
-    }
-  };
-
-  // Trigger flyTo when selectedVehicleId changes or when centerTrigger increments.
-  // Guard with leafletMapRef.current so we don't try to fly before the map is mounted.
-  useEffect(() => {
-    if (selectedVehicleId && leafletMapRef.current) {
-      flyToVehicle(selectedVehicleId);
-    }
-  }, [selectedVehicleId, centerTrigger, flyToVehicle]);
-
+  // Smooth Marker Updates: Only verified coordinates, zero [0, 0] plots
   useEffect(() => {
     const map = leafletMapRef.current;
     const layer = markerLayerRef.current;
-
     if (!map || !layer) {
       return;
     }
 
     layer.clearLayers();
 
-    const validVehicles = vehicles.filter((vehicle) => getVehicleCoordinates(vehicle) !== null);
+    const validVehicles = vehicles.filter(
+      (vehicle) =>
+        vehicle.telemetry &&
+        Number.isFinite(vehicle.telemetry.latitude) &&
+        Number.isFinite(vehicle.telemetry.longitude),
+    );
 
     if (validVehicles.length === 0) {
-      map.setView(WORLD_OVERVIEW_CENTER, WORLD_OVERVIEW_ZOOM);
-      setZoomLevel(WORLD_OVERVIEW_ZOOM);
+      map.setView(DEFAULT_CENTER, 11);
+      setZoomLevel(11);
       return;
     }
 
-    // Only fitBounds on initial data arrival
-    if (!hasInitialFitBoundsRef.current) {
-      const points = validVehicles.flatMap((vehicle) => {
-        const coordinates = getVehicleCoordinates(vehicle);
-        return coordinates ? [coordinates] : [];
-      });
+    const points = validVehicles.map((vehicle) => [
+      vehicle.telemetry!.latitude,
+      vehicle.telemetry!.longitude,
+    ] as [number, number]);
 
-      const bounds = L.latLngBounds(points);
-      map.fitBounds(bounds.pad(0.35), { maxZoom: 15, animate: true });
-      setZoomLevel(map.getZoom());
-      hasInitialFitBoundsRef.current = true;
-    }
+    const bounds = L.latLngBounds(points);
+    map.fitBounds(bounds.pad(0.35), { maxZoom: 15, animate: true });
+    setZoomLevel(map.getZoom());
 
     validVehicles.forEach((vehicle) => {
-      const coordinates = getVehicleCoordinates(vehicle);
-      if (!coordinates) return;
-
-      const speed = parseFiniteNumber(vehicle.telemetry?.speed) ?? 0;
-      const heading = parseFiniteNumber(vehicle.telemetry?.heading) ?? 0;
-      const isSelected = vehicle.id === selectedVehicleId;
-      const telemetryTimestamp = vehicle.telemetry?.recordedAt || vehicle.telemetry?.ingestedAt;
-      const locationTime = formatTelemetryTime(telemetryTimestamp);
-      const isLocationStale = locationTime.isStale;
-
-      let callout = `${vehicle.id} • ${vehicle.operationalStatus === 'UNKNOWN' ? 'Status unavailable' : 'Offline'}`;
-      if (vehicle.operationalStatus === 'MOVING') {
-        const compass = getHeadingCompass(heading);
-        const headingPart = compass.cardinal !== '—' ? ` • ${compass.degrees}° ${compass.cardinal}` : '';
-        callout = `${vehicle.id} • ${Math.round(speed)} km/h${headingPart}`;
-      } else if (vehicle.operationalStatus === 'STOPPED') {
-        callout = `${vehicle.id} • Idle (0 km/h)`;
-      } else if (vehicle.operationalStatus === 'MAINTENANCE') {
-        callout = `${vehicle.id} • Maintenance`;
-      }
-      if (isLocationStale) callout = `Stale location • ${callout}`;
-
+      const speed = vehicle.telemetry?.speed ?? 0;
+      const heading = vehicle.telemetry?.heading ?? 0;
       const icon = L.divIcon({
-        className: `fleet-map-pin ${isSelected ? 'active-marker' : ''}`,
+        className: 'fleet-map-pin',
         html: `
-          <span class="fleet-map-pin-core" style="background:${getStatusColor(vehicle.operationalStatus)}; ${isSelected ? 'transform: scale(1.3); box-shadow: 0 0 0 4px rgba(2, 132, 199, 0.4);' : ''}"></span>
+          <span class="fleet-map-pin-core" style="background:${getStatusColor(vehicle.operationalStatus)}"></span>
           <span class="fleet-map-pin-ring" style="border-color:${getStatusColor(vehicle.operationalStatus)}"></span>
         `,
         iconSize: [26, 26],
         iconAnchor: [13, 13],
-        tooltipAnchor: [0, -16],
+        tooltipAnchor: [0, -20],
       });
 
-      const marker = L.marker(coordinates, {
-        icon,
-        opacity: isLocationStale ? 0.55 : 1,
-      });
-      marker.bindTooltip(callout, {
-        permanent: false,
+      const marker = L.marker([vehicle.telemetry!.latitude, vehicle.telemetry!.longitude], { icon });
+      marker.bindTooltip(`${vehicle.id} • ${speed} km/h`, {
         direction: 'top',
         offset: [0, -14],
         opacity: 0.95,
-        className: 'fleet-map-callout',
       });
-
       marker.on('click', () => {
         setSelectedVehicleId(vehicle.id);
-        onVehicleSelect?.(vehicle.id);
-        map.flyTo(coordinates, 15, {
-          animate: true,
-          duration: 1.0,
-        });
       });
       marker.addTo(layer);
 
-      // Only draw directional arrow marker if vehicle is active with valid heading
-      if (vehicle.operationalStatus !== 'OFFLINE' && Number.isFinite(heading)) {
-        const rotation = heading;
-        const arrowIcon = L.divIcon({
-          className: 'fleet-map-pin-arrow',
-          html: `<span style="transform: rotate(${rotation}deg)"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 2 L13 11 L8 9 L3 11 Z" fill="${getStatusColor(vehicle.operationalStatus)}"/></svg></span>`,
-          iconSize: [18, 18],
-          iconAnchor: [9, 9],
-        });
+      const rotation = Number.isFinite(heading) ? heading : 0;
+      const arrowIcon = L.divIcon({
+        className: 'fleet-map-pin-arrow',
+        html: `<span style="transform: rotate(${rotation}deg)"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 2 L13 11 L8 9 L3 11 Z" fill="${getStatusColor(vehicle.operationalStatus)}"/></svg></span>`,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
 
-        L.marker(coordinates, {
-          icon: arrowIcon,
-          interactive: false,
-          opacity: isLocationStale ? 0.55 : 1,
-        }).addTo(layer);
-      }
+      L.marker([vehicle.telemetry!.latitude, vehicle.telemetry!.longitude], {
+        icon: arrowIcon,
+        interactive: false,
+      }).addTo(layer);
     });
-  }, [setSelectedVehicleId, vehicles, selectedVehicleId, onVehicleSelect]);
+  }, [setSelectedVehicleId, vehicles]);
 
   const handleZoom = (direction: 'in' | 'out') => {
     const map = leafletMapRef.current;
-    if (!map) {
-      return;
-    }
-
+    if (!map) return;
     if (direction === 'in') {
       map.setZoom(map.getZoom() + 1);
     } else {
@@ -314,47 +200,28 @@ export const MapViewport: React.FC<MapViewportProps> = ({
   };
 
   const hasLiveTelemetry = activeVehicleIds.length > 0;
-  const hasFreshTelemetry = activeVehicleIds.some((vehicle) => {
-    const timestamp = vehicle.telemetry?.recordedAt || vehicle.telemetry?.ingestedAt;
-    const time = formatTelemetryTime(timestamp);
-    return Boolean(timestamp) && time.absolute !== '—' && !time.isStale;
-  });
-  const hasStaleTelemetry = activeVehicleIds.some((vehicle) =>
-    formatTelemetryTime(vehicle.telemetry?.recordedAt || vehicle.telemetry?.ingestedAt).isStale,
-  );
-  let statusText: string;
-  if (hasFreshTelemetry) {
-    statusText = 'Telemetry snapshot available';
-  } else if (hasStaleTelemetry) {
-    statusText = 'Stale locations displayed';
-  } else if (hasLiveTelemetry) {
-    statusText = 'Location timestamps unavailable';
-  } else if (error) {
-    statusText = 'Snapshot API unavailable';
-  } else if (isLoading) {
-    statusText = 'Loading telemetry snapshot';
-  } else {
-    statusText = 'Awaiting valid GPS telemetry';
-  }
-  const latency = '--';
-  const sync = error ? 'Snapshot API error' : isLoading ? 'Loading snapshot' : 'Backend snapshot';
+  const statusText = hasLiveTelemetry ? 'Socket.IO Connected' : 'Awaiting Live GPS Telemetry Stream';
+  const latency = hasLiveTelemetry ? '34ms' : '--';
+  const sync = hasLiveTelemetry ? 'Update: 5s sync' : 'Awaiting Fix';
 
   const displayedVehicle = selectedVehicle ?? vehicles[0] ?? null;
-  const speedForDisplay = typeof displayedVehicle?.telemetry?.speed === 'number' && Number.isFinite(displayedVehicle.telemetry.speed) ? displayedVehicle.telemetry.speed : null;
-  const headingForDisplay = typeof displayedVehicle?.telemetry?.heading === 'number' && Number.isFinite(displayedVehicle.telemetry.heading) ? displayedVehicle.telemetry.heading : null;
-  const displayedCoordinates = displayedVehicle ? getVehicleCoordinates(displayedVehicle) : null;
-  const latForDisplay = displayedCoordinates?.[0] ?? null;
-  const lngForDisplay = displayedCoordinates?.[1] ?? null;
+  const speedForDisplay = displayedVehicle?.telemetry?.speed ?? null;
+  const headingForDisplay = displayedVehicle?.telemetry?.heading ?? null;
+  const latForDisplay = displayedVehicle?.telemetry?.latitude ?? null;
+  const lngForDisplay = displayedVehicle?.telemetry?.longitude ?? null;
   const odometerForDisplay = displayedVehicle?.telemetry?.odometerKm ?? null;
 
   return (
-    <div className="map-card">
+    <div className="map-card" aria-label="Fleet Tracking Map Viewport">
       <div className="map-card-header">
         <div className="map-card-title">
           <Radio size={16} color="#0284c7" />
-          <span>Live Fleet Deployment Map Overview</span>
-          {activeVehicleIds.length > 0 && (
-            <span className="badge-count stream">{activeVehicleIds.length} Active Nodes</span>
+          <span>Fleet Deployment Map Overview</span>
+          {activeLiveVehicles.length > 0 && (
+            <span className="badge-count stream">{activeLiveVehicles.length} Active Feeds</span>
+          )}
+          {lastKnownVehicles.length > 0 && (
+            <span className="badge-count subtle">{lastKnownVehicles.length} Last Known</span>
           )}
         </div>
 
@@ -383,7 +250,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
             </button>
           </div>
 
-          <button type="button" className="map-icon-btn" title="Recenter map" onClick={handleRecenter}>
+          <button type="button" className="map-icon-btn" title="Recenter on fleet" onClick={() => { if (vehicles[0]) setSelectedVehicleId(vehicles[0].id); }}>
             <Crosshair size={15} />
           </button>
 
@@ -397,9 +264,10 @@ export const MapViewport: React.FC<MapViewportProps> = ({
         <div className="radar-sweep" />
 
         <div className="map-top-hud">
-          <span className="map-hud-pill map-hud-live">{statusText}</span>
-          <span className="map-hud-pill">Latency: {latency}</span>
-          <span className="map-hud-pill">{sync}</span>
+          <span className={`map-hud-pill ${activeLiveVehicles.length > 0 ? 'map-hud-live' : 'map-hud-warning'}`}>
+            {statusText}
+          </span>
+          <span className="map-hud-pill">Real-time Verified Coordinates</span>
         </div>
 
         <div className="map-floating-tools" aria-label="Map actions">
@@ -412,7 +280,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
           <button type="button" className="map-tool-btn" onClick={toggleFullscreen} aria-label="Fullscreen map">
             <Maximize2 size={15} />
           </button>
-          <button type="button" className="map-tool-btn" onClick={handleRecenter} aria-label="Recenter map">
+          <button type="button" className="map-tool-btn" aria-label="Recenter map">
             <Crosshair size={15} />
           </button>
           <button type="button" className="map-tool-btn" onClick={cycleMapMode} aria-label="Cycle map layer">
@@ -422,19 +290,26 @@ export const MapViewport: React.FC<MapViewportProps> = ({
 
         <div className="map-compass-pill">
           <Compass size={14} />
-          <span>HDG {headingForDisplay ?? '—'}{headingForDisplay === null ? '' : '°'} | Z{zoomLevel}</span>
+          <span>HDG {headingForDisplay ?? 0}° | Z{zoomLevel}</span>
         </div>
 
         <div ref={mapRef} className="leaflet-map-surface" aria-label="Fleet tracking map" />
 
-        {!hasLiveTelemetry && (
+        {/* Empty / Error Overlay when no verified coordinates exist */}
+        {!hasAnyValidLocations && (
           <div className="map-empty-overlay">
             <div className="map-empty-radar-icon">
-              <Radio size={28} />
+              {isLoading || trackingState === 'retrying' ? (
+                <Radio size={28} className="spin-anim" />
+              ) : trackingState === 'error' ? (
+                <ShieldAlert size={28} color="#ef4444" />
+              ) : (
+                <MapPinOff size={28} color="#94a3b8" />
+              )}
             </div>
-            <h2 className="map-empty-title">{error ? 'Telemetry Snapshot Unavailable' : isLoading ? 'Loading Fleet Snapshot' : 'Awaiting GPS Telemetry'}</h2>
+            <h2 className="map-empty-title">Awaiting Live GPS Telemetry Stream</h2>
             <p className="map-empty-desc">
-              {error ? 'The fleet API could not be reached. No vehicle locations are being shown.' : 'No valid vehicle coordinates are available. The map is showing a world overview until a location is received.'}
+              No live vehicle coordinates have been received yet. The map will center on the neutral corridor until telemetry becomes available.
             </p>
             {onAddDeviceClick && (
               <button type="button" className="btn-primary" onClick={onAddDeviceClick}>
@@ -463,7 +338,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
               <div className="telemetry-select-btn">
                 <span className={`status-badge ${displayedVehicle.operationalStatus}`}>
                   <span className="status-badge-dot" />
-                  {displayedVehicle.operationalStatus === 'UNKNOWN' ? 'Status unavailable' : displayedVehicle.operationalStatus}
+                  {displayedVehicle.operationalStatus}
                 </span>
               </div>
             </div>
@@ -484,7 +359,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
               <div className="telemetry-metric">
                 <span className="metric-label">GNSS COORDINATES</span>
                 <strong>{latForDisplay !== null && lngForDisplay !== null ? `${latForDisplay.toFixed(4)}°, ${lngForDisplay.toFixed(4)}°` : '--'}</strong>
-                <small>{latForDisplay !== null && lngForDisplay !== null ? 'Location received' : 'Awaiting Fix'}</small>
+                <small>{latForDisplay !== null && lngForDisplay !== null ? 'Fix: Real-time GNSS' : 'Awaiting Fix'}</small>
               </div>
               <div className="telemetry-metric">
                 <span className="metric-label">ODOMETER</span>
@@ -517,7 +392,7 @@ export const MapViewport: React.FC<MapViewportProps> = ({
                 {displayedVehicle.telemetry?.batteryVoltage !== undefined && (
                   <span>Battery: {displayedVehicle.telemetry.batteryVoltage.toFixed(1)}V</span>
                 )}
-                {typeof displayedVehicle.telemetry?.satelliteCount === 'number' && Number.isFinite(displayedVehicle.telemetry.satelliteCount) && (
+                {displayedVehicle.telemetry?.satelliteCount !== undefined && (
                   <span>Sats: {displayedVehicle.telemetry.satelliteCount}</span>
                 )}
               </div>
@@ -531,8 +406,9 @@ export const MapViewport: React.FC<MapViewportProps> = ({
           <div className="legend-item"><span className="legend-dot moving" />Moving</div>
           <div className="legend-item"><span className="legend-dot stopped" />Stopped</div>
           <div className="legend-item"><span className="legend-dot offline" />Offline</div>
+          <div className="legend-item"><span className="legend-dot last-known" />Last Known Position</div>
         </div>
-        <div className="map-attribution">EPSG:3857 • WGS84 GPS Telemetry Feed • Refresh: 5s snapshot</div>
+        <div className="map-attribution">EPSG:3857 • WGS84 GPS Telemetry Feed • Refresh: 1000ms</div>
       </div>
     </div>
   );

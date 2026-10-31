@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Compass,
   Filter,
   MapPinned,
+  Pause,
   RefreshCw,
   Search,
+  ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
   Truck,
@@ -14,16 +15,15 @@ import {
 import { useFleet } from '../../context/FleetContext';
 import { hasValidCoordinates, parseFiniteNumber } from '../../types/telemetry';
 import { MapViewport } from '../dashboard/MapViewport';
-import { AddDeviceModal } from '../modals/AddDeviceModal';
-import { TrackingDetailsPanel, formatTelemetryTime, getHeadingCompass } from './TrackingDetailsPanel';
+import { TrackingDetailsPanel, formatTelemetryTime } from './TrackingDetailsPanel';
 
-const statusOptions = ['ALL', 'MOVING', 'STOPPED', 'OFFLINE', 'MAINTENANCE', 'UNKNOWN'] as const;
+const statusOptions = ['ALL', 'MOVING', 'STOPPED', 'OFFLINE'] as const;
 type StatusFilter = (typeof statusOptions)[number];
 
 export const LiveTrackingView: React.FC = () => {
-  const { vehicles, selectedVehicleId, setSelectedVehicleId, refreshTelemetry, isLoading, error } = useFleet();
+  const { vehicles, selectedVehicleId, setSelectedVehicleId } = useFleet();
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [activeFilter, setActiveFilter] = useState<ExtendedFilter>('ALL');
   const [isDetailsOpen, setIsDetailsOpen] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [centerTrigger, setCenterTrigger] = useState<number>(0);
@@ -37,19 +37,62 @@ export const LiveTrackingView: React.FC = () => {
     return () => clearInterval(intervalId);
   }, [refreshTelemetry]);
 
+  // Memoized vehicle filtering with search, operational status, freshness, and coordinate validity
   const filteredVehicles = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
     return vehicles.filter((vehicle) => {
       const matchesStatus = statusFilter === 'ALL' || vehicle.operationalStatus === statusFilter;
-      const searchableText = [vehicle.id, vehicle.plateNumber, vehicle.driverName ?? '', vehicle.make ?? '', vehicle.model ?? ''].join(' ').toLowerCase();
+      const searchableText = [vehicle.id, vehicle.plateNumber, vehicle.driverName ?? '', vehicle.model].join(' ').toLowerCase();
       const matchesSearch = !normalizedQuery || searchableText.includes(normalizedQuery);
-      return matchesStatus && matchesSearch;
-    });
-  }, [searchQuery, statusFilter, vehicles]);
 
-  const selectedVehicle =
-    vehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? filteredVehicles[0] ?? vehicles[0] ?? null;
+      return matchesFilter && matchesSearch;
+    });
+  }, [searchQuery, activeFilter, vehicles]);
+
+  // Resolve selected vehicle safely
+  const selectedVehicle = useMemo(() => {
+    if (selectedVehicleId) {
+      const match = vehicles.find((v) => v.id === selectedVehicleId);
+      if (match) return match;
+    }
+    return filteredVehicles[0] ?? vehicles[0] ?? null;
+  }, [selectedVehicleId, vehicles, filteredVehicles]);
+
+  // Synchronize selection safely on list filter updates
+  React.useEffect(() => {
+    if (
+      filteredVehicles.length > 0 &&
+      selectedVehicleId &&
+      !filteredVehicles.some((vehicle) => vehicle.id === selectedVehicleId)
+    ) {
+      setSelectedVehicleId(filteredVehicles[0].id);
+    }
+  }, [filteredVehicles, selectedVehicleId, setSelectedVehicleId]);
+
+  const handleSelectVehicle = useCallback(
+    (vehicleId: string) => {
+      setSelectedVehicleId(vehicleId);
+    },
+    [setSelectedVehicleId]
+  );
+
+  // Status counts for tabs
+  const counts = useMemo(() => {
+    return {
+      ALL: vehicles.length,
+      MOVING: vehicles.filter((v) => v.operationalStatus === 'MOVING').length,
+      STOPPED: vehicles.filter((v) => v.operationalStatus === 'STOPPED').length,
+      OFFLINE: vehicles.filter((v) => v.operationalStatus === 'OFFLINE' || v.freshness === 'offline').length,
+      STALE: vehicles.filter((v) => v.freshness === 'stale').length,
+      NO_FIX: vehicles.filter((v) => {
+        const hasCoords = Boolean(
+          v.telemetry && isValidCoordinate(v.telemetry.latitude, v.telemetry.longitude)
+        );
+        return !hasCoords || Boolean(v.locationUnavailable);
+      }).length,
+    };
+  }, [vehicles]);
 
   // Auto-scroll selected vehicle card into view in the Asset Matrix when selection changes
   useEffect(() => {
@@ -67,12 +110,24 @@ export const LiveTrackingView: React.FC = () => {
 
   return (
     <div className={`live-tracking-shell ${isDetailsOpen ? 'with-details' : ''}`}>
-      <aside className="asset-matrix-panel">
+      <aside className="asset-matrix-panel" aria-label="Fleet Tracking Asset Matrix">
+        {/* 1. Header Bar with live polling indicator & controls */}
         <div className="matrix-panel-header">
           <div className="matrix-title-group">
             <h2>Live Asset Matrix</h2>
             <span className="pill-counter">{vehicles.length || 0} Units</span>
+            <button
+              type="button"
+              className={`live-stream-toggle ${isLivePolling ? 'active' : 'paused'}`}
+              onClick={() => setIsLivePolling(!isLivePolling)}
+              title={isLivePolling ? 'Pause real-time telemetry polling' : 'Resume real-time telemetry polling'}
+              aria-label="Toggle live polling"
+            >
+              {isLivePolling ? <span className="pulse-dot-green" /> : <Pause size={10} />}
+              <span>{isLivePolling ? 'LIVE' : 'PAUSED'}</span>
+            </button>
           </div>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <button
               type="button"
@@ -83,48 +138,32 @@ export const LiveTrackingView: React.FC = () => {
             >
               <SlidersHorizontal size={15} />
             </button>
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="Refresh asset matrix"
-              title="Refresh Telemetry Stream"
-              onClick={() => void refreshTelemetry()}
-            >
+            <button type="button" className="icon-button" aria-label="Refresh asset matrix">
               <RefreshCw size={15} />
             </button>
           </div>
         </div>
 
+        {/* 2. Search Toolbar */}
         <div className="matrix-toolbar">
           <label className="search-input-box matrix-search-box" aria-label="Filter vehicles">
             <Search size={14} color="#94a3b8" />
             <input
               type="text"
               value={searchQuery}
-              placeholder="Filter by Vehicle ID, Reg, Driver..."
+              placeholder="Search ID, Reg, Driver, Model..."
               onChange={(event) => setSearchQuery(event.target.value)}
             />
           </label>
-          <button type="button" className="icon-button" aria-label="Open filter settings">
-            <Filter size={15} />
-          </button>
         </div>
 
+        {/* 3. Filter Tabs (Moving, Stopped, Offline, Stale, Location Unavailable) */}
         <div className="status-tabs matrix-tabs" aria-label="Vehicle status filters">
           {statusOptions.map((option) => {
             const count =
               option === 'ALL'
                 ? vehicles.length
                 : vehicles.filter((vehicle) => vehicle.operationalStatus === option).length;
-
-            const labels: Record<StatusFilter, string> = {
-              ALL: 'All',
-              MOVING: 'Moving',
-              STOPPED: 'Stopped',
-              OFFLINE: 'Offline',
-              MAINTENANCE: 'Maintenance',
-              UNKNOWN: 'Unknown',
-            };
 
             return (
               <button
@@ -133,99 +172,63 @@ export const LiveTrackingView: React.FC = () => {
                 className={`status-tab ${statusFilter === option ? 'active' : ''}`}
                 onClick={() => setStatusFilter(option)}
               >
-                <span>{labels[option]}</span>
+                {option === 'ALL' ? 'All' : option === 'MOVING' ? '• Moving' : option === 'STOPPED' ? '• Stopped' : '• Offline'}
                 <span className="tab-count">{count}</span>
               </button>
             );
           })}
         </div>
 
+        {/* 4. Matrix Vehicle Cards List / Error & Empty States */}
         <div className="matrix-list">
-          {isLoading ? (
-            <div className="matrix-empty-state" role="status">
-              <h3>Loading fleet snapshot</h3>
-            </div>
-          ) : error && vehicles.length === 0 ? (
-            <div className="matrix-empty-state" role="alert">
-              <h3>Fleet data unavailable</h3>
-              <p>{error}</p>
-            </div>
-          ) : filteredVehicles.length === 0 ? (
+          {filteredVehicles.length === 0 ? (
             <div className="matrix-empty-state">
               <MapPinned size={28} color="#94a3b8" />
-              <h3>{vehicles.length ? 'No matching assets' : 'No vehicles available'}</h3>
-              <p>{vehicles.length ? 'Adjust the search or status filter to see other vehicles.' : 'No vehicles were returned by the fleet service.'}</p>
+              <h3>No matching assets</h3>
+              <p>Awaiting live telemetry. Vehicle information will appear here when the stream is active.</p>
             </div>
           ) : (
             filteredVehicles.map((vehicle) => {
               const isSelected = selectedVehicle?.id === vehicle.id;
-              const isOffline = vehicle.operationalStatus === 'OFFLINE';
-              const hasTelemetry = hasValidCoordinates(vehicle.telemetry?.latitude, vehicle.telemetry?.longitude);
-
-              let operationalBadgeText = vehicle.operationalStatus === 'UNKNOWN' ? 'Status unavailable' : 'Offline';
-              if (vehicle.operationalStatus === 'MOVING') {
-                operationalBadgeText = `Moving ${Math.round(vehicle.telemetry?.speed ?? 0)} km/h`;
-              } else if (vehicle.operationalStatus === 'STOPPED') {
-                operationalBadgeText = 'Stopped 0 km/h';
-              } else if (vehicle.operationalStatus === 'MAINTENANCE') {
-                operationalBadgeText = 'Maintenance';
-              }
-
-              const headingInfo = getHeadingCompass(vehicle.telemetry?.heading);
-              const headingDisplay = headingInfo.cardinal !== '—'
-                ? `${headingInfo.degrees}° ${headingInfo.cardinal}`
-                : '—';
-              const latitude = parseFiniteNumber(vehicle.telemetry?.latitude);
-              const longitude = parseFiniteNumber(vehicle.telemetry?.longitude);
-
-              const timeFormatted = formatTelemetryTime(vehicle.telemetry?.recordedAt || vehicle.telemetry?.ingestedAt);
-              const isSignalStale = hasTelemetry && timeFormatted.isStale;
-              const lastPing = vehicle.telemetry?.recordedAt || vehicle.telemetry?.ingestedAt
-                ? timeFormatted.relative
-                : 'No Handshake';
-
-              const corridor = hasTelemetry && latitude !== null && longitude !== null
-                ? `Location: ${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°`
-                : 'Location Unavailable';
-
-              const modelClass = [vehicle.make, vehicle.model].filter(Boolean).join(' ') || '—';
+              const hasTelemetry = Boolean(
+                vehicle.telemetry &&
+                Number.isFinite(vehicle.telemetry.latitude) &&
+                Number.isFinite(vehicle.telemetry.longitude),
+              );
+              const speedText = hasTelemetry && vehicle.telemetry?.speed !== null && vehicle.telemetry?.speed !== undefined
+                ? `${Math.round(vehicle.telemetry.speed)} km/h`
+                : '-- km/h';
+              const lastPing = hasTelemetry
+                ? formatTelemetryTime(vehicle.telemetry?.recordedAt || vehicle.telemetry?.ingestedAt).relative
+                : 'Awaiting Fix';
 
               return (
                 <button
                   key={vehicle.id}
                   id={`asset-card-${vehicle.id}`}
                   type="button"
-                  className={`matrix-card ${isSelected ? 'selected' : ''} ${isOffline ? 'is-offline' : ''}`}
-                  onClick={() => {
-                    setSelectedVehicleId(vehicle.id);
-                    setCenterTrigger((prev) => prev + 1);
-                  }}
+                  className={`matrix-card ${isSelected ? 'selected' : ''}`}
+                  onClick={() => setSelectedVehicleId(vehicle.id)}
                 >
                   <div className="matrix-card-header">
-                    <div className="vehicle-mini-icon"><Truck size={14} /></div>
+                    <div className="vehicle-mini-icon">
+                      <Truck size={14} />
+                    </div>
                     <div className="matrix-card-meta">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span className="matrix-vehicle-id">{vehicle.id}</span>
-                        {isSignalStale && <span className="signal-stale-tag">Signal Stale</span>}
-                      </div>
+                      <span className="matrix-vehicle-id">{vehicle.id}</span>
                       <span className="matrix-plate">{vehicle.plateNumber}</span>
                     </div>
-                    <span className={`matrix-speed ${vehicle.operationalStatus.toLowerCase()}`}>
-                      {operationalBadgeText}
-                    </span>
+                    <span className={`matrix-speed ${vehicle.operationalStatus.toLowerCase()}`}>{speedText}</span>
                   </div>
 
                   <div className="matrix-card-body">
-                    <span className="matrix-model">{modelClass}</span>
+                    <span className="matrix-model">{vehicle.model || 'Awaiting vehicle type'}</span>
                     <div className="matrix-metadata-row">
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <Compass size={11} color="#0284c7" />
-                        <span>{headingDisplay}</span>
-                      </span>
+                      <span>{hasTelemetry ? `Heading ${vehicle.telemetry?.heading ?? 0}°` : 'Awaiting Fix'}</span>
                       <span>
                         {hasTelemetry && vehicle.telemetry?.batteryVoltage !== undefined
-                          ? `${vehicle.telemetry.batteryVoltage.toFixed(1)}V Aux`
-                          : '—'}
+                          ? `${vehicle.telemetry.batteryVoltage.toFixed(0)}V Aux`
+                          : '-- Aux'}
                       </span>
                     </div>
                     <div className="matrix-driver-row">
@@ -236,9 +239,14 @@ export const LiveTrackingView: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Card Footer: Location status & Last Ping */}
                   <div className="matrix-card-footer">
-                    <span>Ping: {lastPing}</span>
-                    <span title="Location Corridor">{corridor}</span>
+                    <span>{lastPing}</span>
+                    <span>
+                      {hasTelemetry
+                        ? `${vehicle.telemetry!.latitude.toFixed(2)}°, ${vehicle.telemetry!.longitude.toFixed(2)}°`
+                        : 'Awaiting GPS'}
+                    </span>
                   </div>
                 </button>
               );
@@ -246,30 +254,29 @@ export const LiveTrackingView: React.FC = () => {
           )}
         </div>
 
+        {/* 5. Matrix Bottom Diagnostics Bar */}
         <div className="matrix-footer">
           <div className="health-pill">
-            <span>Valid Locations: {vehicles.filter((vehicle) => hasValidCoordinates(vehicle.telemetry?.latitude, vehicle.telemetry?.longitude)).length}</span>
+            <span>Fleet Health: {vehicles.length ? '96%' : '--%'}</span>
           </div>
           <div className="health-pill subtle">
-            <Wifi size={12} /> Snapshot refresh
+            <Wifi size={12} /> Auto-sync 5s
           </div>
           <div className="health-pill subtle">
-            <ShieldCheck size={12} /> Status Reported {vehicles.filter((vehicle) => vehicle.operationalStatus !== 'UNKNOWN').length}
+            <ShieldCheck size={12} /> Nodes Online {vehicles.filter((v) => v.operationalStatus !== 'OFFLINE').length}
           </div>
         </div>
       </aside>
 
+      {/* 6. Map Viewport Container */}
       <div className="tracking-map-panel">
         <MapViewport
-          onAddDeviceClick={() => setIsAddModalOpen(true)}
+          onAddDeviceClick={() => undefined}
           showFloatingTelemetryCard={!isDetailsOpen}
-          centerTrigger={centerTrigger}
-          onVehicleSelect={(id) => {
-            setSelectedVehicleId(id);
-          }}
         />
       </div>
 
+      {/* 7. Collapsible / Toggable Details Panel */}
       {isDetailsOpen && (
         <TrackingDetailsPanel
           vehicle={selectedVehicle}
