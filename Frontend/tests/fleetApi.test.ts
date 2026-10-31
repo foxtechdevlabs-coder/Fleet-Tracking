@@ -7,6 +7,7 @@ import {
   getDevice,
   getLatestLocations,
   getLocationReport,
+  getSettings,
   getVehicle,
   ingestLocation,
   listDevices,
@@ -30,6 +31,11 @@ function requestAt(index = 0): [string, RequestInit & { headers: Record<string, 
   return vi.mocked(fetch).mock.calls[index] as [string, RequestInit & { headers: Record<string, string>; body: string }];
 }
 
+function requestPath(index = 0): string {
+  const url = new URL(requestAt(index)[0], "http://localhost");
+  return `${url.pathname}${url.search}`;
+}
+
 beforeEach(() => {
   vi.stubGlobal("window", {
     setTimeout,
@@ -49,8 +55,8 @@ describe("fleet API client", () => {
       .mockResolvedValueOnce(response({ data: [{ id: "d-2" }], meta: { total: 2 } }));
 
     await expect(listDevices(session)).resolves.toEqual([{ id: "d-1" }, { id: "d-2" }]);
-    expect(requestAt(0)[0]).toBe("/api/devices?page=1&limit=100");
-    expect(requestAt(1)[0]).toBe("/api/devices?page=2&limit=100");
+    expect(requestPath(0)).toBe("/api/devices?page=1&limit=100");
+    expect(requestPath(1)).toBe("/api/devices?page=2&limit=100");
     expect(requestAt(0)[1].headers.Authorization).toBe("Bearer test-token");
   });
 
@@ -58,7 +64,15 @@ describe("fleet API client", () => {
     vi.mocked(fetch).mockResolvedValueOnce(response({ data: [{ id: "v-1" }], meta: { total: 1 } }));
 
     await expect(listVehicles(session)).resolves.toEqual([{ id: "v-1" }]);
-    expect(requestAt()[0]).toBe("/api/vehicles?page=1&limit=100");
+    expect(requestPath()).toBe("/api/vehicles?page=1&limit=100");
+  });
+
+  it("loads effective settings from the protected settings endpoint", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(response({ data: { "general.timezone": "UTC" } }));
+
+    await expect(getSettings(session)).resolves.toEqual({ "general.timezone": "UTC" });
+    expect(requestPath()).toBe("/api/settings");
+    expect(requestAt()[1].headers.Authorization).toBe("Bearer test-token");
   });
 
   it("uses documented CRUD paths and payloads", async () => {
@@ -77,8 +91,8 @@ describe("fleet API client", () => {
     await deleteDevice(session, "d-1");
     await deleteVehicle(session, "v-1");
 
-    expect(requestAt(0)[0]).toBe("/api/devices/d-1");
-    expect(requestAt(1)[0]).toBe("/api/vehicles/v-1");
+    expect(requestPath(0)).toBe("/api/devices/d-1");
+    expect(requestPath(1)).toBe("/api/vehicles/v-1");
     expect(requestAt(2)[1].method).toBe("PUT");
     expect(JSON.parse(requestAt(2)[1].body)).toEqual({ identifier: "GPS-1", status: "active" });
     expect(requestAt(3)[1].method).toBe("PUT");
@@ -91,7 +105,7 @@ describe("fleet API client", () => {
     const payload = { vehicle: { plateNumber: "TN01", make: "Tata", model: "Prima", year: 2024 }, device: { identifier: "GPS-1", status: "active" } };
 
     await createVehicleDevice(session, payload);
-    expect(requestAt()[0]).toBe("/api/v1/setup/vehicle-device");
+    expect(requestPath()).toBe("/api/v1/setup/vehicle-device");
     expect(requestAt()[1].method).toBe("POST");
     expect(JSON.parse(requestAt()[1].body)).toEqual(payload);
   });
@@ -103,8 +117,8 @@ describe("fleet API client", () => {
 
     await getLatestLocations(session);
     await getLatestLocations(session, [" v-2 "]);
-    expect(requestAt(0)[0]).toBe("/api/v1/tracking/latest");
-    expect(requestAt(1)[0]).toBe("/api/v1/tracking/latest");
+    expect(requestPath(0)).toBe("/api/v1/tracking/latest");
+    expect(requestPath(1)).toBe("/api/v1/tracking/latest");
     expect(requestAt(1)[1].method).toBe("POST");
     expect(JSON.parse(requestAt(1)[1].body)).toEqual({ vehicleIds: ["v-2"] });
   });
@@ -114,7 +128,7 @@ describe("fleet API client", () => {
     const payload = { deviceIdentifier: "GPS-1", recordedAt: "2026-10-24T00:00:00.000Z", latitude: 1, longitude: 2, speed: 30 };
 
     await ingestLocation(session, payload);
-    expect(requestAt()[0]).toBe("/api/v1/tracking/ingest");
+    expect(requestPath()).toBe("/api/v1/tracking/ingest");
     expect(requestAt()[1].method).toBe("POST");
     expect(JSON.parse(requestAt()[1].body)).toEqual(payload);
   });
@@ -140,5 +154,14 @@ describe("fleet API client", () => {
       message: "Unauthorized"
     });
     await expect(getLatestLocations(session)).rejects.toBeInstanceOf(FleetApiError);
+  });
+
+  it("reports an unsupported API method accurately", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(response({ message: "Method not allowed" }, 405));
+
+    await expect(getSettings(session)).rejects.toMatchObject({
+      status: 405,
+      message: "Method not allowed"
+    });
   });
 });

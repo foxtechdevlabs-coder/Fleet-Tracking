@@ -454,7 +454,7 @@ export function ReportResultsTable({ records, filter, timeZone = 'UTC', speedUni
               title={exportTooltip || 'Export returned records to Excel workbook'}
             >
               {isExporting ? <RotateCw size={14} className="spin-anim" /> : <FileSpreadsheet size={14} />}
-              <span>{isExporting ? 'Exporting...' : 'Export Excel (.xlsx)'}</span>
+              <span>{isExporting ? 'Exporting...' : 'Download Excel'}</span>
             </button>
           </div>
         </div>
